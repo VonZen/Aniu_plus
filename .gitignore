@@ -69,3 +69,7 @@ backend/data/skill_workspace/
 # Personal local scripts
 /dev.bat
 /setup.bat
+
+.playwright-mcp
+backend/data/jwt_secret.txt
+backend/data-backup-*/

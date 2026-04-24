@@ -4,6 +4,7 @@ import inspect
 import json
 import logging
 import queue
+import re
 import secrets
 import time
 import traceback
@@ -62,6 +63,11 @@ AUTOMATION_DEFAULT_RECENT_MESSAGE_LIMIT = 24
 AUTOMATION_DEFAULT_IDLE_SUMMARY_HOURS = 12
 AUTOMATION_COMPACTION_TRIGGER_RATIO = 0.85
 
+TRADE_WINDOW_EXPRESSION_RE = re.compile(
+    r"^trade-window:(\d{2}):(\d{2})-(\d{2}):(\d{2})\/(\d+)(s|m)$",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class PersistentRunSessionContext:
@@ -71,6 +77,15 @@ class PersistentRunSessionContext:
     summary_revision: int | None
     context_tokens_estimate: int | None
     messages: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class TradeWindowSchedule:
+    start_hour: int
+    start_minute: int
+    end_hour: int
+    end_minute: int
+    interval_seconds: int
 
 
 def now_utc() -> datetime:
@@ -1767,6 +1782,9 @@ class AniuService:
                 "run_type": schedule.run_type if schedule else manual_resolved_run_type,
                 "schedule_id": schedule.id if schedule else None,
                 "system_prompt": settings.system_prompt,
+                "analyst_prompt": getattr(settings, "analyst_prompt", None),
+                "max_actions": int(getattr(settings, "max_actions", 2) or 2),
+                "trade_enabled": bool(getattr(settings, "trade_enabled", True)),
                 "task_prompt": schedule.task_prompt if schedule else manual_task_prompt,
                 "timeout_seconds": int(
                     schedule.timeout_seconds if schedule else 1800
@@ -1807,6 +1825,35 @@ class AniuService:
             }
         return run_id, settings_snapshot
 
+    def _build_trade_execution_prompt(self, settings: Any) -> str:
+        base_prompt = str(getattr(settings, "task_prompt", "") or "").strip()
+        analyst_prompt = str(getattr(settings, "analyst_prompt", "") or "").strip()
+        max_actions = max(1, int(getattr(settings, "max_actions", 2) or 2))
+        trade_enabled = bool(getattr(settings, "trade_enabled", True))
+
+        execution_lines = [
+            "这是交易执行任务，不是纯分析任务。",
+            "你必须在本轮给出可执行结果，禁止只输出“可轻仓试错”“可以考虑开仓”“关注某标的”这类模糊建议后不落地。",
+            "本轮只允许两种结果：",
+            "1. 若判断存在足够明确的交易机会，直接调用 `mx_moni_trade` 或 `mx_moni_cancel` 执行具体操作；",
+            "2. 若没有足够把握，明确输出 `NO_ACTION`，并说明不交易的关键原因。",
+            "如果账户当前空仓，而你判断适合建仓，必须明确到具体标的、方向、数量、价格方式，并直接发起工具调用。",
+            "买入标的只允许沪深主板股票：上证 600/601/603/605，深证 000/001/002。",
+            "禁止买入名称含 `ST` 或 `*ST` 的股票；如无法确认股票名称或板块归属，则不得买入。",
+            "如果已有持仓，优先处理持仓，再决定是否新开仓。",
+            f"本轮最多执行 {max_actions} 个买卖动作（不含撤单）。",
+            "不要把‘盘中继续观察’当作默认结论；只有在确实不满足交易条件时，才能输出 `NO_ACTION`。",
+        ]
+        if not trade_enabled:
+            execution_lines.append(
+                "当前交易开关关闭，本轮不得执行买卖或撤单，只能输出 `NO_ACTION`。"
+            )
+        if analyst_prompt:
+            execution_lines.append(f"补充分析要求：{analyst_prompt}")
+
+        prompt_parts = [base_prompt, "\n".join(execution_lines)]
+        return "\n\n".join(part for part in prompt_parts if part)
+
     def _run_body(
         self,
         *,
@@ -1837,6 +1884,8 @@ class AniuService:
             )
 
             settings = SimpleNamespace(**settings_snapshot)
+            if str(getattr(settings, "run_type", "") or "").strip() == "trade":
+                settings.task_prompt = self._build_trade_execution_prompt(settings)
             mx_client_config = build_skill_context(
                 run_type=getattr(settings, "run_type", "analysis"),
                 app_settings=settings,
@@ -2909,6 +2958,100 @@ class AniuService:
         db.add(session)
         return session.archived_summary, session.summary_revision
 
+    def _normalize_schedule_base_time(
+        self, from_time: datetime | None = None
+    ) -> datetime:
+        current_base = from_time or now_shanghai()
+        if current_base.tzinfo is None:
+            return current_base.replace(tzinfo=SHANGHAI_TZ)
+        return current_base.astimezone(SHANGHAI_TZ)
+
+    def _parse_trade_window_schedule(
+        self, expression: str | None
+    ) -> TradeWindowSchedule | None:
+        matched = TRADE_WINDOW_EXPRESSION_RE.match(str(expression or "").strip())
+        if not matched:
+            return None
+
+        (
+            start_hour_text,
+            start_minute_text,
+            end_hour_text,
+            end_minute_text,
+            interval_value_text,
+            unit_text,
+        ) = matched.groups()
+
+        start_hour = int(start_hour_text)
+        start_minute = int(start_minute_text)
+        end_hour = int(end_hour_text)
+        end_minute = int(end_minute_text)
+        interval_value = int(interval_value_text)
+        interval_seconds = interval_value if unit_text.lower() == "s" else interval_value * 60
+
+        start_total_minutes = start_hour * 60 + start_minute
+        end_total_minutes = end_hour * 60 + end_minute
+        if interval_seconds <= 0 or start_total_minutes >= end_total_minutes:
+            return None
+
+        return TradeWindowSchedule(
+            start_hour=start_hour,
+            start_minute=start_minute,
+            end_hour=end_hour,
+            end_minute=end_minute,
+            interval_seconds=interval_seconds,
+        )
+
+    def _compute_trade_window_next_run_at(
+        self,
+        schedule: TradeWindowSchedule,
+        *,
+        from_time: datetime | None = None,
+    ) -> datetime | None:
+        current_base = self._normalize_schedule_base_time(from_time)
+        current = current_base.replace(microsecond=0) + timedelta(seconds=1)
+        current_date = current.date()
+
+        for _ in range(366 * 2):
+            if not trading_calendar_service.is_trading_day(current_date):
+                current_date = trading_calendar_service.next_trading_day(current_date)
+                continue
+
+            day_start = datetime(
+                current_date.year,
+                current_date.month,
+                current_date.day,
+                schedule.start_hour,
+                schedule.start_minute,
+                tzinfo=SHANGHAI_TZ,
+            )
+            day_end = datetime(
+                current_date.year,
+                current_date.month,
+                current_date.day,
+                schedule.end_hour,
+                schedule.end_minute,
+                tzinfo=SHANGHAI_TZ,
+            )
+
+            if current <= day_start:
+                return day_start.astimezone(timezone.utc)
+
+            if current < day_end:
+                elapsed_seconds = (current - day_start).total_seconds()
+                step_count = int(elapsed_seconds // schedule.interval_seconds)
+                candidate = day_start + timedelta(
+                    seconds=(step_count + 1) * schedule.interval_seconds
+                )
+                if candidate < day_end:
+                    return candidate.astimezone(timezone.utc)
+
+            current_date = trading_calendar_service.next_trading_day(
+                current_date + timedelta(days=1)
+            )
+
+        return None
+
     def _compute_next_run_at(
         self,
         cron_expression: str | None,
@@ -2916,6 +3059,13 @@ class AniuService:
     ) -> datetime | None:
         if not cron_expression:
             return None
+
+        trade_window_schedule = self._parse_trade_window_schedule(cron_expression)
+        if trade_window_schedule is not None:
+            return self._compute_trade_window_next_run_at(
+                trade_window_schedule,
+                from_time=from_time,
+            )
 
         parts = cron_expression.strip().split()
         if len(parts) != 5:
@@ -2936,12 +3086,7 @@ class AniuService:
         except ValueError:
             return None
 
-        current_base = from_time or now_shanghai()
-        if current_base.tzinfo is None:
-            current_base = current_base.replace(tzinfo=SHANGHAI_TZ)
-        else:
-            current_base = current_base.astimezone(SHANGHAI_TZ)
-
+        current_base = self._normalize_schedule_base_time(from_time)
         current = current_base.replace(second=0, microsecond=0) + timedelta(minutes=1)
 
         for _ in range(60 * 24 * 366 * 2):

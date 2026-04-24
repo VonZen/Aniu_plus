@@ -110,6 +110,22 @@ function formatCooldownDuration(ms: number) {
   return `${Math.max(totalMinutes, 1)}分钟`
 }
 
+function parseTradeWindowExpression(expression: string) {
+  const matched = /^trade-window:(\d{2}):(\d{2})-(\d{2}):(\d{2})\/(\d+)(s|m)$/i.exec((expression || '').trim())
+  if (!matched) {
+    return null
+  }
+
+  const [, startHourText, startMinuteText, endHourText, endMinuteText, intervalValueText, unitText] = matched
+  const intervalValue = Number(intervalValueText)
+  const intervalUnit = unitText.toLowerCase() === 's' ? '秒' : '分钟'
+
+  return {
+    sortKey: Number(startHourText) * 60 + Number(startMinuteText),
+    displayTime: `${startHourText}:${startMinuteText}-${endHourText}:${endMinuteText} / 每${intervalValue}${intervalUnit}`,
+  }
+}
+
 function defaultRuntimeOverview(): RuntimeOverview {
   return {
     last_run: {
@@ -173,11 +189,12 @@ export const useAppStore = defineStore('app', () => {
       .filter((item) => item.enabled)
       .slice()
       .map((item) => {
+        const tradeWindow = parseTradeWindowExpression(item.cron_expression)
         const parts = (item.cron_expression || '').trim().split(/\s+/)
         const minute = Number(parts[0]) || 0
         const hour = Number(parts[1]) || 0
-        const displayTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-        const sortKey = hour * 60 + minute
+        const displayTime = tradeWindow?.displayTime ?? `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+        const sortKey = tradeWindow?.sortKey ?? (hour * 60 + minute)
         const displayName = item.name.replace(/#(\d+)$/, '$1号')
         const category = item.run_type === 'trade' ? '交易任务' : '分析任务'
         return {

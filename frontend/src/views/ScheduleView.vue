@@ -189,30 +189,33 @@
                         <h4 class="run-name">上午运行</h4>
                         <p class="run-time">09:30 - 11:30</p>
                       </div>
-                      <div class="run-control">
-                        <div class="choice-chip-group run-count-group">
-                          <button
-                            v-for="count in runCountOptions"
-                            :key="`morning-${count}`"
-                            type="button"
-                            class="choice-chip"
-                            :class="{ 'is-active': scheduleSettings.morning.runCount === count }"
-                            @click="scheduleSettings.morning.runCount = count"
+                      <div class="run-control run-frequency-control">
+                        <input
+                          v-model.number="scheduleSettings.morning.intervalValue"
+                          type="number"
+                          min="1"
+                          step="1"
+                          class="frequency-input"
+                          @blur="normalizeSessionInterval('morning')"
+                        />
+                        <select
+                          v-model="scheduleSettings.morning.intervalUnit"
+                          @change="normalizeSessionInterval('morning')"
+                        >
+                          <option
+                            v-for="option in sessionIntervalUnitOptions"
+                            :key="`morning-${option.value}`"
+                            :value="option.value"
                           >
-                            {{ count }}次
-                          </button>
-                        </div>
+                            {{ option.label }}
+                          </option>
+                        </select>
                       </div>
                     </div>
                     <div class="run-schedule">
-                      <span class="schedule-label">计划运行时间</span>
-                      <div class="schedule-badges">
-                        <span 
-                          v-for="(time, index) in getMorningRunTimes().split(', ')" 
-                          :key="'m'+index"
-                          class="badge"
-                        >{{ time }}</span>
-                      </div>
+                      <span class="schedule-label">执行规则</span>
+                      <p class="schedule-summary">{{ getMorningRunSummary() }}</p>
+                      <p class="schedule-summary-meta">预计每个交易日上午运行 {{ getMorningEstimatedRuns() }} 次</p>
                     </div>
                     <div class="run-prompt">
                       <span class="prompt-label">提示词 <small>{{ scheduleSettings.morning.prompt.length }}字</small></span>
@@ -230,30 +233,33 @@
                         <h4 class="run-name">下午运行</h4>
                         <p class="run-time">13:00 - 15:00</p>
                       </div>
-                      <div class="run-control">
-                        <div class="choice-chip-group run-count-group">
-                          <button
-                            v-for="count in runCountOptions"
-                            :key="`afternoon-${count}`"
-                            type="button"
-                            class="choice-chip"
-                            :class="{ 'is-active': scheduleSettings.afternoon.runCount === count }"
-                            @click="scheduleSettings.afternoon.runCount = count"
+                      <div class="run-control run-frequency-control">
+                        <input
+                          v-model.number="scheduleSettings.afternoon.intervalValue"
+                          type="number"
+                          min="1"
+                          step="1"
+                          class="frequency-input"
+                          @blur="normalizeSessionInterval('afternoon')"
+                        />
+                        <select
+                          v-model="scheduleSettings.afternoon.intervalUnit"
+                          @change="normalizeSessionInterval('afternoon')"
+                        >
+                          <option
+                            v-for="option in sessionIntervalUnitOptions"
+                            :key="`afternoon-${option.value}`"
+                            :value="option.value"
                           >
-                            {{ count }}次
-                          </button>
-                        </div>
+                            {{ option.label }}
+                          </option>
+                        </select>
                       </div>
                     </div>
                     <div class="run-schedule">
-                      <span class="schedule-label">计划运行时间</span>
-                      <div class="schedule-badges">
-                        <span 
-                          v-for="(time, index) in getAfternoonRunTimes().split(', ')" 
-                          :key="'a'+index"
-                          class="badge"
-                        >{{ time }}</span>
-                      </div>
+                      <span class="schedule-label">执行规则</span>
+                      <p class="schedule-summary">{{ getAfternoonRunSummary() }}</p>
+                      <p class="schedule-summary-meta">预计每个交易日下午运行 {{ getAfternoonEstimatedRuns() }} 次</p>
                     </div>
                     <div class="run-prompt">
                       <span class="prompt-label">提示词 <small>{{ scheduleSettings.afternoon.prompt.length }}字</small></span>
@@ -289,13 +295,16 @@ const { busy, schedules, errorMessage, activeScheduleCards, nextScheduledTask } 
 const {
   scheduleSettings,
   fixedTaskTimeOptions,
-  runCountOptions,
+  sessionIntervalUnitOptions,
   syncFromSchedules,
   buildPayload,
   setFixedTaskTime,
   autoResizeTextarea,
-  getMorningRunTimes,
-  getAfternoonRunTimes,
+  normalizeSessionInterval,
+  getMorningRunSummary,
+  getAfternoonRunSummary,
+  getMorningEstimatedRuns,
+  getAfternoonEstimatedRuns,
 } = useScheduleForm()
 
 async function saveScheduleSettings() {

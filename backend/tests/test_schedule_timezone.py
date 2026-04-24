@@ -98,6 +98,57 @@ def test_compute_next_run_at_supports_range_step_expression() -> None:
     assert in_shanghai.minute == 12
 
 
+def test_compute_next_run_at_supports_trade_window_second_frequency() -> None:
+    shanghai = ZoneInfo("Asia/Shanghai")
+    start = datetime(2026, 4, 13, 9, 30, 5, tzinfo=shanghai)
+
+    result = aniu_service._compute_next_run_at(
+        "trade-window:09:30-11:30/30s",
+        from_time=start,
+    )
+
+    assert result is not None
+    in_shanghai = result.astimezone(shanghai)
+    assert in_shanghai.date().isoformat() == "2026-04-13"
+    assert in_shanghai.hour == 9
+    assert in_shanghai.minute == 30
+    assert in_shanghai.second == 30
+
+
+def test_compute_next_run_at_supports_trade_window_minute_frequency() -> None:
+    shanghai = ZoneInfo("Asia/Shanghai")
+    start = datetime(2026, 4, 13, 13, 5, tzinfo=shanghai)
+
+    result = aniu_service._compute_next_run_at(
+        "trade-window:13:00-15:00/1m",
+        from_time=start,
+    )
+
+    assert result is not None
+    in_shanghai = result.astimezone(shanghai)
+    assert in_shanghai.date().isoformat() == "2026-04-13"
+    assert in_shanghai.hour == 13
+    assert in_shanghai.minute == 6
+    assert in_shanghai.second == 0
+
+
+def test_compute_next_run_at_trade_window_rolls_to_next_trading_day_after_window_end() -> None:
+    shanghai = ZoneInfo("Asia/Shanghai")
+    start = datetime(2026, 4, 13, 11, 29, 40, tzinfo=shanghai)
+
+    result = aniu_service._compute_next_run_at(
+        "trade-window:09:30-11:30/30s",
+        from_time=start,
+    )
+
+    assert result is not None
+    in_shanghai = result.astimezone(shanghai)
+    assert in_shanghai.date().isoformat() == "2026-04-14"
+    assert in_shanghai.hour == 9
+    assert in_shanghai.minute == 30
+    assert in_shanghai.second == 0
+
+
 def test_schedule_datetimes_are_stored_as_utc() -> None:
     shanghai = ZoneInfo("Asia/Shanghai")
     result = aniu_service._compute_next_run_at(

@@ -31,8 +31,6 @@ def test_execute_run_rejects_unknown_schedule_id(monkeypatch, tmp_path) -> None:
     database_module._engine = None
     database_module._session_local = None
     get_settings.cache_clear()
-
-
 def test_moni_trade_requires_limit_price() -> None:
     with pytest.raises(RuntimeError, match="LIMIT 委托必须提供有效价格"):
         mx_skill_service._handle_moni_trade(
@@ -60,6 +58,81 @@ def test_moni_trade_rejects_non_positive_limit_price() -> None:
                 "price": 0,
             },
         )
+
+
+def test_moni_trade_rejects_non_mainboard_buy() -> None:
+    class StubClient:
+        def query_market(self, query):
+            del query
+            return {"entityName": "宁德时代(300750.SZ)"}
+
+        def trade(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(RuntimeError, match="仅允许买入沪深主板股票"):
+        mx_skill_service._handle_moni_trade(
+            client=StubClient(),
+            app_settings=None,
+            arguments={
+                "action": "BUY",
+                "symbol": "300750.SZ",
+                "quantity": 100,
+                "price_type": "MARKET",
+            },
+        )
+
+
+def test_moni_trade_rejects_st_buy() -> None:
+    class StubClient:
+        def query_market(self, query):
+            del query
+            return {"entityName": "*ST测试(600001.SH)"}
+
+        def trade(self, **kwargs):
+            return kwargs
+
+    with pytest.raises(RuntimeError, match="禁止买入 ST"):
+        mx_skill_service._handle_moni_trade(
+            client=StubClient(),
+            app_settings=None,
+            arguments={
+                "action": "BUY",
+                "symbol": "600001.SH",
+                "quantity": 100,
+                "price_type": "MARKET",
+            },
+        )
+
+
+def test_moni_trade_allows_non_st_mainboard_buy() -> None:
+    class StubClient:
+        def __init__(self) -> None:
+            self.last_trade_kwargs = None
+
+        def query_market(self, query):
+            del query
+            return {"entityName": "贵州茅台(600519.SH)"}
+
+        def trade(self, **kwargs):
+            self.last_trade_kwargs = kwargs
+            return {"ok": True}
+
+    client = StubClient()
+    result = mx_skill_service._handle_moni_trade(
+        client=client,
+        app_settings=None,
+        arguments={
+            "action": "BUY",
+            "symbol": "600519",
+            "name": "贵州茅台",
+            "quantity": 100,
+            "price_type": "MARKET",
+        },
+    )
+
+    assert client.last_trade_kwargs is not None
+    assert client.last_trade_kwargs["symbol"] == "600519.SH"
+    assert result["executed_action"]["symbol"] == "600519.SH"
 
 
 def test_resolve_run_type_maps_schedule_names() -> None:
@@ -133,6 +206,23 @@ def test_build_initial_request_payload_uses_run_type_tool_profile() -> None:
 
     assert "mx_moni_trade" not in names
     assert "mx_query_market" in names
+
+
+def test_build_trade_execution_prompt_forces_execute_or_no_action() -> None:
+    settings = SimpleNamespace(
+        task_prompt="执行早盘交易决策",
+        analyst_prompt="当信号不明确时返回HOLD。",
+        max_actions=2,
+        trade_enabled=True,
+    )
+
+    prompt = aniu_service._build_trade_execution_prompt(settings)
+
+    assert "这是交易执行任务，不是纯分析任务" in prompt
+    assert "`mx_moni_trade`" in prompt
+    assert "`NO_ACTION`" in prompt
+    assert "最多执行 2 个买卖动作" in prompt
+    assert "禁止买入名称含 `ST` 或 `*ST`" in prompt
 
 
 def test_consume_llm_stream_uses_fresh_http_client_per_request(monkeypatch) -> None:

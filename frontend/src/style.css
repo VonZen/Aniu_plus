@@ -3179,7 +3179,41 @@ textarea {
   color: #eef4ff;
 }
 
-/* 时间徽章 */
+.run-frequency-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.frequency-input {
+  width: 88px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(145, 170, 214, 0.2);
+  border-radius: 8px;
+  color: #eef4ff;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.frequency-input:hover,
+.frequency-input:focus {
+  border-color: rgba(145, 170, 214, 0.35);
+  background: rgba(81, 180, 255, 0.06);
+}
+
+.frequency-input::-webkit-outer-spin-button,
+.frequency-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.frequency-input[type='number'] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
 .run-schedule {
   padding-top: 14px;
   border-top: 1px solid rgba(145, 170, 214, 0.08);
@@ -3194,20 +3228,20 @@ textarea {
   letter-spacing: 0.08em;
 }
 
-.schedule-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.schedule-summary,
+.schedule-summary-meta {
+  margin: 0;
 }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 14px;
-  background: rgba(81, 180, 255, 0.1);
-  border: 1px solid rgba(81, 180, 255, 0.2);
-  border-radius: 6px;
-  color: #86cfff;
+.schedule-summary {
+  color: #d8e7ff;
+  line-height: 1.6;
+}
+
+.schedule-summary-meta {
+  margin-top: 8px;
+  color: #7a90b0;
+  font-size: 12px;
 }
 
 /* 运行提示词 */
@@ -3291,6 +3325,12 @@ textarea {
   .task-main,
   .run-item {
     padding: 14px 16px;
+  }
+
+  .run-main,
+  .run-frequency-control {
+    align-items: flex-start;
+    flex-direction: column;
   }
   
   .task-detail {

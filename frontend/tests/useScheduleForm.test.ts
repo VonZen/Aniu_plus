@@ -3,24 +3,32 @@ import test from 'node:test'
 
 import { useScheduleForm } from '../src/composables/useScheduleForm.ts'
 
-test('getMorningRunTimes supports select string values', () => {
-  const { scheduleSettings, getMorningRunTimes } = useScheduleForm()
+test('getMorningRunSummary supports second-level frequencies', () => {
+  const { scheduleSettings, getMorningRunSummary } = useScheduleForm()
 
-  scheduleSettings.morning.runCount = '3' as unknown as number
+  scheduleSettings.morning.intervalValue = 30
+  scheduleSettings.morning.intervalUnit = 'seconds'
 
-  assert.equal(getMorningRunTimes(), '09:30, 10:15, 11:00')
+  assert.equal(getMorningRunSummary(), '09:30 开始，每30秒执行一次，11:30 前结束')
 })
 
-test('buildPayload creates correct morning run count from select string values', () => {
+test('buildPayload creates single trade window schedule for each session', () => {
   const { scheduleSettings, buildPayload } = useScheduleForm()
 
-  scheduleSettings.morning.runCount = '4' as unknown as number
+  scheduleSettings.morning.intervalValue = 30
+  scheduleSettings.morning.intervalUnit = 'seconds'
+  scheduleSettings.afternoon.intervalValue = 1
+  scheduleSettings.afternoon.intervalUnit = 'minutes'
 
   const payload = buildPayload([])
   const morningRuns = payload.filter((item) => item.name.startsWith('上午运行'))
+  const afternoonRuns = payload.filter((item) => item.name.startsWith('下午运行'))
 
-  assert.equal(morningRuns.length, 4)
+  assert.equal(morningRuns.length, 1)
+  assert.equal(afternoonRuns.length, 1)
   assert.equal(morningRuns.every((item) => item.run_type === 'trade'), true)
+  assert.equal(morningRuns[0]?.cron_expression, 'trade-window:09:30-11:30/30s')
+  assert.equal(afternoonRuns[0]?.cron_expression, 'trade-window:13:00-15:00/1m')
 })
 
 test('buildPayload marks fixed tasks as analysis', () => {
@@ -39,16 +47,8 @@ test('buildPayload preserves disabled session schedules', () => {
   syncFromSchedules([
     {
       id: 11,
-      name: '上午运行1号',
-      cron_expression: '0 10 * * 1-5',
-      task_prompt: 'session',
-      timeout_seconds: 1800,
-      enabled: false,
-    },
-    {
-      id: 12,
-      name: '上午运行2号',
-      cron_expression: '0 11 * * 1-5',
+      name: '上午运行',
+      cron_expression: 'trade-window:09:30-11:30/30m',
       task_prompt: 'session',
       timeout_seconds: 1800,
       enabled: false,
@@ -58,16 +58,8 @@ test('buildPayload preserves disabled session schedules', () => {
   const payload = buildPayload([
     {
       id: 11,
-      name: '上午运行1号',
-      cron_expression: '0 10 * * 1-5',
-      task_prompt: 'session',
-      timeout_seconds: 1800,
-      enabled: false,
-    },
-    {
-      id: 12,
-      name: '上午运行2号',
-      cron_expression: '0 11 * * 1-5',
+      name: '上午运行',
+      cron_expression: 'trade-window:09:30-11:30/30m',
       task_prompt: 'session',
       timeout_seconds: 1800,
       enabled: false,
@@ -75,7 +67,52 @@ test('buildPayload preserves disabled session schedules', () => {
   ])
 
   const morningRuns = payload.filter((item) => item.name.startsWith('上午运行'))
+  assert.equal(morningRuns.length, 1)
   assert.equal(morningRuns.every((item) => item.enabled === false), true)
+})
+
+test('syncFromSchedules reads trade window frequency expression', () => {
+  const { scheduleSettings, syncFromSchedules } = useScheduleForm()
+
+  syncFromSchedules([
+    {
+      id: 20,
+      name: '下午运行',
+      cron_expression: 'trade-window:13:00-15:00/30s',
+      task_prompt: 'session',
+      timeout_seconds: 1800,
+      enabled: true,
+    },
+  ])
+
+  assert.equal(scheduleSettings.afternoon.intervalValue, 30)
+  assert.equal(scheduleSettings.afternoon.intervalUnit, 'seconds')
+})
+
+test('syncFromSchedules migrates legacy session schedules into inferred minute frequency', () => {
+  const { scheduleSettings, syncFromSchedules } = useScheduleForm()
+
+  syncFromSchedules([
+    {
+      id: 31,
+      name: '上午运行1号',
+      cron_expression: '0 10 * * 1-5',
+      task_prompt: 'legacy',
+      timeout_seconds: 1800,
+      enabled: true,
+    },
+    {
+      id: 32,
+      name: '上午运行2号',
+      cron_expression: '0 11 * * 1-5',
+      task_prompt: 'legacy',
+      timeout_seconds: 1800,
+      enabled: true,
+    },
+  ])
+
+  assert.equal(scheduleSettings.morning.intervalValue, 60)
+  assert.equal(scheduleSettings.morning.intervalUnit, 'minutes')
 })
 
 test('syncFromSchedules normalizes pre-market times to supported button options', () => {

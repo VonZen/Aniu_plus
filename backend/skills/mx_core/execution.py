@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from skills.mx_core.client import MXClient
@@ -18,6 +19,70 @@ ERROR_HINTS: tuple[tuple[str, str], ...] = (
     ("No dataTable found", "本次查询没有返回可用数据表，请放宽查询条件或到东方财富妙想 AI 页面确认查询方式。"),
     ("筛选结果为空", "本次筛选没有匹配到股票，请放宽选股条件。"),
 )
+
+MAINBOARD_PREFIXES_BY_MARKET: dict[str, tuple[str, ...]] = {
+    "SH": ("600", "601", "603", "605"),
+    "SZ": ("000", "001", "002"),
+}
+
+
+def _normalize_trade_symbol(symbol: str) -> tuple[str, str, str]:
+    text = str(symbol or "").strip().upper()
+    matched = re.fullmatch(r"(\d{6})(?:\.(SH|SZ))?", text)
+    if not matched:
+        raise RuntimeError("股票代码格式无效，买卖 A 股时请使用 6 位代码或带交易所后缀的代码。")
+
+    code, explicit_market = matched.groups()
+    inferred_market = ""
+    for market, prefixes in MAINBOARD_PREFIXES_BY_MARKET.items():
+        if code.startswith(prefixes):
+            inferred_market = market
+            break
+
+    if explicit_market and inferred_market and explicit_market != inferred_market:
+        raise RuntimeError("股票代码与交易所后缀不匹配，请检查 symbol。")
+
+    market = explicit_market or inferred_market
+    normalized_symbol = f"{code}.{market}" if market else code
+    return code, market, normalized_symbol
+
+
+def _is_mainboard_symbol(symbol: str) -> bool:
+    try:
+        code, market, _ = _normalize_trade_symbol(symbol)
+    except RuntimeError:
+        return False
+
+    if market not in MAINBOARD_PREFIXES_BY_MARKET:
+        return False
+    return code.startswith(MAINBOARD_PREFIXES_BY_MARKET[market])
+
+
+def _extract_security_name_from_market_payload(payload: Any) -> str:
+    if isinstance(payload, dict):
+        entity_name = str(payload.get("entityName") or "").strip()
+        if entity_name:
+            return entity_name.split("(")[0].strip()
+        for key in ("name", "stockName", "SECURITY_SHORT_NAME", "securityName"):
+            value = str(payload.get(key) or "").strip()
+            if value:
+                return value
+        for value in payload.values():
+            resolved = _extract_security_name_from_market_payload(value)
+            if resolved:
+                return resolved
+        return ""
+    if isinstance(payload, list):
+        for item in payload:
+            resolved = _extract_security_name_from_market_payload(item)
+            if resolved:
+                return resolved
+    return ""
+
+
+def _is_st_stock_name(name: str) -> bool:
+    normalized = str(name or "").upper().replace(" ", "")
+    return "ST" in normalized if normalized else False
 
 
 class MXExecutionService:
@@ -202,9 +267,34 @@ class MXExecutionService:
             except (TypeError, ValueError):
                 price = None
 
+        normalized_symbol = symbol
+        if action == "BUY":
+            _, _, normalized_symbol = _normalize_trade_symbol(symbol)
+            if not _is_mainboard_symbol(normalized_symbol):
+                raise RuntimeError(
+                    "当前仅允许买入沪深主板股票，不支持创业板、科创板、北交所或其他非主板标的。"
+                )
+
+            security_name = str(arguments.get("name") or "").strip()
+            if not security_name:
+                try:
+                    market_payload = client.query_market(normalized_symbol)
+                except Exception as exc:
+                    raise RuntimeError(
+                        "买入前无法校验股票是否属于沪深主板且非 ST，请稍后重试。"
+                    ) from exc
+                security_name = _extract_security_name_from_market_payload(
+                    market_payload
+                )
+
+            if not security_name:
+                raise RuntimeError("买入前无法确认股票名称，当前禁止买入。")
+            if _is_st_stock_name(security_name):
+                raise RuntimeError("当前禁止买入 ST 或 *ST 股票。")
+
         result = client.trade(
             action=action,
-            symbol=symbol,
+            symbol=normalized_symbol,
             quantity=quantity,
             price_type=price_type,
             price=price,
@@ -212,10 +302,10 @@ class MXExecutionService:
         return {
             "ok": True,
             "tool_name": "mx_moni_trade",
-            "summary": f"已提交{action}委托：{symbol} {quantity} 股。",
+            "summary": f"已提交{action}委托：{normalized_symbol} {quantity} 股。",
             "result": result,
             "executed_action": {
-                "symbol": symbol,
+                "symbol": normalized_symbol,
                 "name": str(arguments.get("name") or "").strip(),
                 "action": action,
                 "quantity": quantity,

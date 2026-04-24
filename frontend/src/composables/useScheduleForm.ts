@@ -6,6 +6,7 @@ type ScheduleLike = Pick<ScheduleConfig, 'id' | 'name' | 'run_type' | 'cron_expr
 
 type ScheduleKey = 'preMarket' | 'midday' | 'postMarket'
 type SessionKey = 'morning' | 'afternoon'
+type IntervalUnit = 'seconds' | 'minutes'
 
 type FixedTaskTimeOption = {
   hour: number
@@ -40,14 +41,17 @@ export const FIXED_TASK_TIME_OPTIONS = {
   },
 } as const
 
-export const RUN_COUNT_OPTIONS = [1, 2, 3, 4] as const
+export const SESSION_INTERVAL_UNIT_OPTIONS = [
+  { value: 'seconds', label: '秒' },
+  { value: 'minutes', label: '分钟' },
+] as const
 
 export interface ScheduleFormState {
   preMarket: { enabled: boolean; hour: number; minute: number; prompt: string }
   postMarket: { enabled: boolean; hour: number; minute: number; prompt: string }
   midday: { enabled: boolean; hour: number; minute: number; prompt: string }
-  morning: { enabled: boolean; runCount: number; prompt: string }
-  afternoon: { enabled: boolean; runCount: number; prompt: string }
+  morning: { enabled: boolean; intervalValue: number; intervalUnit: IntervalUnit; prompt: string }
+  afternoon: { enabled: boolean; intervalValue: number; intervalUnit: IntervalUnit; prompt: string }
 }
 
 const FIXED_TASK_NAMES = {
@@ -61,7 +65,20 @@ const SESSION_TASK_NAMES = {
   afternoon: '下午运行',
 } as const
 
+const SESSION_WINDOWS = {
+  morning: { startHour: 9, startMinute: 30, endHour: 11, endMinute: 30 },
+  afternoon: { startHour: 13, startMinute: 0, endHour: 15, endMinute: 0 },
+} as const
+
+const LEGACY_SESSION_INTERVAL_MINUTES = {
+  1: 120,
+  2: 60,
+  3: 45,
+  4: 30,
+} as const
+
 const DEFAULT_TIMEOUT = 1800
+const TRADE_WINDOW_EXPRESSION_RE = /^trade-window:(\d{2}):(\d{2})-(\d{2}):(\d{2})\/(\d+)(s|m)$/i
 
 function normalizeSectionTime(section: ScheduleKey, hour: number, minute: number) {
   const options = FIXED_TASK_TIME_OPTIONS[section]
@@ -98,8 +115,8 @@ const defaultState = (): ScheduleFormState => ({
   preMarket: { enabled: false, hour: 8, minute: 0, prompt: '你正在执行盘前分析任务，请分析今日市场情况和持仓情况，做好今日市场走势预测，为你决策交易做好准备。' },
   postMarket: { enabled: false, hour: 15, minute: 30, prompt: '你正在执行收盘分析任务，请对今日市场和交易操作进行全面复盘，总结今日市场和明日可能的走势。' },
   midday: { enabled: false, hour: 12, minute: 0, prompt: '你正在执行午间复盘任务，请对上午市场和交易操作进行复盘，做好下午市场走势预测，为你决策交易做好准备。' },
-  morning: { enabled: true, runCount: 2, prompt: '你正在执行盘中交易操作，你的唯一目标是追求收益最大化。' },
-  afternoon: { enabled: true, runCount: 2, prompt: '你正在执行盘中交易操作，你的唯一目标是追求收益最大化。' },
+  morning: { enabled: true, intervalValue: 60, intervalUnit: 'minutes', prompt: '你正在执行盘中交易操作，你的唯一目标是追求收益最大化。' },
+  afternoon: { enabled: true, intervalValue: 60, intervalUnit: 'minutes', prompt: '你正在执行盘中交易操作，你的唯一目标是追求收益最大化。' },
 })
 
 function parseCron(cronExpression: string) {
@@ -114,42 +131,84 @@ function buildCron(hour: number, minute: number) {
   return `${minute} ${hour} * * 1-5`
 }
 
-function getSessionTimes(session: SessionKey, runCount: number) {
-  const count = Number(runCount)
+function formatTime(hour: number, minute: number) {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
 
-  if (session === 'morning') {
-    switch (count) {
-      case 1:
-        return [{ hour: 10, minute: 30 }]
-      case 2:
-        return [{ hour: 10, minute: 0 }, { hour: 11, minute: 0 }]
-      case 3:
-        return [{ hour: 9, minute: 30 }, { hour: 10, minute: 15 }, { hour: 11, minute: 0 }]
-      case 4:
-        return [{ hour: 9, minute: 30 }, { hour: 10, minute: 0 }, { hour: 10, minute: 30 }, { hour: 11, minute: 0 }]
-      default:
-        return [{ hour: 10, minute: 0 }, { hour: 11, minute: 0 }]
-    }
+function normalizeSessionIntervalValue(intervalValue: number, intervalUnit: IntervalUnit) {
+  const rawValue = Number(intervalValue)
+  const safeValue = Number.isFinite(rawValue) ? Math.floor(rawValue) : 0
+  const minimum = intervalUnit === 'seconds' ? 30 : 1
+  return Math.max(minimum, safeValue)
+}
+
+function buildTradeWindowExpression(session: SessionKey, intervalValue: number, intervalUnit: IntervalUnit) {
+  const normalizedIntervalValue = normalizeSessionIntervalValue(intervalValue, intervalUnit)
+  const window = SESSION_WINDOWS[session]
+  const unitSuffix = intervalUnit === 'seconds' ? 's' : 'm'
+  return `trade-window:${formatTime(window.startHour, window.startMinute)}-${formatTime(window.endHour, window.endMinute)}/${normalizedIntervalValue}${unitSuffix}`
+}
+
+function parseTradeWindowExpression(cronExpression: string) {
+  const matched = TRADE_WINDOW_EXPRESSION_RE.exec((cronExpression || '').trim())
+  if (!matched) {
+    return null
   }
 
-  switch (count) {
-    case 1:
-      return [{ hour: 14, minute: 0 }]
-    case 2:
-      return [{ hour: 13, minute: 30 }, { hour: 14, minute: 30 }]
-    case 3:
-      return [{ hour: 13, minute: 0 }, { hour: 13, minute: 45 }, { hour: 14, minute: 30 }]
-    case 4:
-      return [{ hour: 13, minute: 0 }, { hour: 13, minute: 30 }, { hour: 14, minute: 0 }, { hour: 14, minute: 30 }]
-    default:
-      return [{ hour: 13, minute: 30 }, { hour: 14, minute: 30 }]
+  const [, startHourText, startMinuteText, endHourText, endMinuteText, intervalValueText, unitText] = matched
+
+  return {
+    startHour: Number(startHourText),
+    startMinute: Number(startMinuteText),
+    endHour: Number(endHourText),
+    endMinute: Number(endMinuteText),
+    intervalValue: Number(intervalValueText),
+    intervalUnit: unitText.toLowerCase() === 's' ? 'seconds' as const : 'minutes' as const,
   }
 }
 
-function getSessionTimeLabels(session: SessionKey, runCount: number) {
-  return getSessionTimes(session, runCount)
-    .map(({ hour, minute }) => `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`)
-    .join(', ')
+function inferLegacySessionInterval(schedules: ScheduleLike[]) {
+  const matched = schedules
+    .map((item) => parseCron(item.cron_expression))
+    .sort((a, b) => (a.hour * 60 + a.minute) - (b.hour * 60 + b.minute))
+
+  if (matched.length >= 2) {
+    const intervals = matched
+      .slice(1)
+      .map((item, index) => (item.hour * 60 + item.minute) - (matched[index].hour * 60 + matched[index].minute))
+      .filter((value) => value > 0)
+
+    if (intervals.length > 0 && intervals.every((value) => value === intervals[0])) {
+      return {
+        intervalValue: intervals[0],
+        intervalUnit: 'minutes' as const,
+      }
+    }
+  }
+
+  const fallbackMinutes = LEGACY_SESSION_INTERVAL_MINUTES[matched.length as keyof typeof LEGACY_SESSION_INTERVAL_MINUTES] ?? 60
+  return {
+    intervalValue: fallbackMinutes,
+    intervalUnit: 'minutes' as const,
+  }
+}
+
+function getSessionFrequencyLabel(intervalValue: number, intervalUnit: IntervalUnit) {
+  const normalizedIntervalValue = normalizeSessionIntervalValue(intervalValue, intervalUnit)
+  return `每${normalizedIntervalValue}${intervalUnit === 'seconds' ? '秒' : '分钟'}`
+}
+
+function getSessionSummaryText(session: SessionKey, intervalValue: number, intervalUnit: IntervalUnit) {
+  const window = SESSION_WINDOWS[session]
+  return `${formatTime(window.startHour, window.startMinute)} 开始，${getSessionFrequencyLabel(intervalValue, intervalUnit)}执行一次，${formatTime(window.endHour, window.endMinute)} 前结束`
+}
+
+function getSessionEstimatedRunCount(session: SessionKey, intervalValue: number, intervalUnit: IntervalUnit) {
+  const window = SESSION_WINDOWS[session]
+  const durationSeconds = ((window.endHour * 60 + window.endMinute) - (window.startHour * 60 + window.startMinute)) * 60
+  const normalizedIntervalValue = normalizeSessionIntervalValue(intervalValue, intervalUnit)
+  const intervalSeconds = intervalUnit === 'seconds' ? normalizedIntervalValue : normalizedIntervalValue * 60
+  return Math.max(1, Math.ceil(durationSeconds / intervalSeconds))
 }
 
 export function useScheduleForm() {
@@ -182,8 +241,18 @@ export function useScheduleForm() {
       }
 
       scheduleSettings[key].enabled = matched.some((item) => item.enabled)
-      scheduleSettings[key].runCount = Number(matched.length)
       scheduleSettings[key].prompt = matched[0].task_prompt || scheduleSettings[key].prompt
+
+      const parsedTradeWindow = parseTradeWindowExpression(matched[0].cron_expression)
+      if (parsedTradeWindow) {
+        scheduleSettings[key].intervalValue = normalizeSessionIntervalValue(parsedTradeWindow.intervalValue, parsedTradeWindow.intervalUnit)
+        scheduleSettings[key].intervalUnit = parsedTradeWindow.intervalUnit
+        return
+      }
+
+      const inferredInterval = inferLegacySessionInterval(matched)
+      scheduleSettings[key].intervalValue = inferredInterval.intervalValue
+      scheduleSettings[key].intervalUnit = inferredInterval.intervalUnit
     })
   }
 
@@ -202,18 +271,20 @@ export function useScheduleForm() {
       }
     })
 
-    const sessionPayload = (Object.keys(SESSION_TASK_NAMES) as SessionKey[]).flatMap((key) => {
+    const sessionPayload = (Object.keys(SESSION_TASK_NAMES) as SessionKey[]).map((key) => {
       const current = scheduleSettings[key]
       const existing = existingSchedules.filter((item) => item.name.startsWith(SESSION_TASK_NAMES[key]))
-      return getSessionTimes(key, current.runCount).map((time, index) => ({
-        id: existing[index]?.id,
-        name: `${SESSION_TASK_NAMES[key]}${index + 1}号`,
+      const normalizedIntervalValue = normalizeSessionIntervalValue(current.intervalValue, current.intervalUnit)
+      current.intervalValue = normalizedIntervalValue
+      return {
+        id: existing[0]?.id,
+        name: SESSION_TASK_NAMES[key],
         run_type: 'trade' as const,
-        cron_expression: buildCron(time.hour, time.minute),
+        cron_expression: buildTradeWindowExpression(key, normalizedIntervalValue, current.intervalUnit),
         task_prompt: current.prompt,
-        timeout_seconds: existing[index]?.timeout_seconds ?? DEFAULT_TIMEOUT,
+        timeout_seconds: existing[0]?.timeout_seconds ?? DEFAULT_TIMEOUT,
         enabled: current.enabled,
-      }))
+      }
     })
 
     return [...fixedPayload, ...sessionPayload]
@@ -230,23 +301,41 @@ export function useScheduleForm() {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
   }
 
-  function getMorningRunTimes() {
-    return getSessionTimeLabels('morning', scheduleSettings.morning.runCount)
+  function normalizeSessionInterval(session: SessionKey) {
+    scheduleSettings[session].intervalValue = normalizeSessionIntervalValue(
+      scheduleSettings[session].intervalValue,
+      scheduleSettings[session].intervalUnit,
+    )
   }
 
-  function getAfternoonRunTimes() {
-    return getSessionTimeLabels('afternoon', scheduleSettings.afternoon.runCount)
+  function getMorningRunSummary() {
+    return getSessionSummaryText('morning', scheduleSettings.morning.intervalValue, scheduleSettings.morning.intervalUnit)
+  }
+
+  function getAfternoonRunSummary() {
+    return getSessionSummaryText('afternoon', scheduleSettings.afternoon.intervalValue, scheduleSettings.afternoon.intervalUnit)
+  }
+
+  function getMorningEstimatedRuns() {
+    return getSessionEstimatedRunCount('morning', scheduleSettings.morning.intervalValue, scheduleSettings.morning.intervalUnit)
+  }
+
+  function getAfternoonEstimatedRuns() {
+    return getSessionEstimatedRunCount('afternoon', scheduleSettings.afternoon.intervalValue, scheduleSettings.afternoon.intervalUnit)
   }
 
   return {
     scheduleSettings,
     fixedTaskTimeOptions: FIXED_TASK_TIME_OPTIONS,
-    runCountOptions: RUN_COUNT_OPTIONS,
+    sessionIntervalUnitOptions: SESSION_INTERVAL_UNIT_OPTIONS,
     syncFromSchedules,
     buildPayload,
     setFixedTaskTime,
     autoResizeTextarea,
-    getMorningRunTimes,
-    getAfternoonRunTimes,
+    normalizeSessionInterval,
+    getMorningRunSummary,
+    getAfternoonRunSummary,
+    getMorningEstimatedRuns,
+    getAfternoonEstimatedRuns,
   }
 }
