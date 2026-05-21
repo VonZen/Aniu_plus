@@ -179,7 +179,9 @@
               <section class="schedule-section">
                 <header class="section-header">
                   <h3>交易任务</h3>
-                  <p class="section-subtitle">配置交易时段内的定时任务频率</p>
+                  <p class="section-subtitle">
+                    配置交易时段内的定时任务频率，预计每日运行 {{ getDailyEstimatedRuns() }} 次
+                  </p>
                 </header>
 
                 <div class="run-list">
@@ -305,6 +307,7 @@ const {
   getAfternoonRunSummary,
   getMorningEstimatedRuns,
   getAfternoonEstimatedRuns,
+  getDailyEstimatedRuns,
 } = useScheduleForm()
 
 async function saveScheduleSettings() {
