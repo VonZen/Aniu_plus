@@ -70,14 +70,14 @@ docker compose pull && docker compose up -d
 **方式二：docker run**
 
 ```bash
-docker pull ghcr.io/anacondakc/aniu:latest
+docker pull ghcr.io/vonzen/aniu_plus:latest
 
 docker run -d \
   --name aniu \
   -p 8000:8000 \
   --env-file .env.docker \
   -v "$(pwd)/data:/app/data" \
-  ghcr.io/anacondakc/aniu:latest
+  ghcr.io/vonzen/aniu_plus:latest
 ```
 
 #### 4. 登录并配置
@@ -209,9 +209,9 @@ curl -X POST http://127.0.0.1:8000/api/aniu/login \
 
 仓库包含 GitHub Actions 工作流 `.github/workflows/publish-image.yml`：
 
-- 推送 `main` 分支 → 发布 `ghcr.io/anacondakc/aniu:latest` 及 SHA 标签
+- 推送 `main` 分支 → 发布 `ghcr.io/vonzen/aniu_plus:latest` 及 SHA 标签
 - 推送 `v1.0.0` 格式 tag → 发布对应版本镜像并自动创建 Release
-- `docker-compose.yml` 默认拉取 `ghcr.io/anacondakc/aniu:${ANIU_IMAGE_TAG:-latest}`
+- `docker-compose.yml` 默认拉取 `ghcr.io/vonzen/aniu_plus:${ANIU_IMAGE_TAG:-latest}`
 
 ---
 

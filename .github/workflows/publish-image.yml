@@ -19,7 +19,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/Mustang0394/aniu
+  IMAGE_NAME: ghcr.io/vonzen/aniu_plus
 
 jobs:
   build-and-push:
@@ -55,9 +55,9 @@ jobs:
             type=sha,format=short
             type=raw,value=${{ inputs.custom_tag }},enable=${{ inputs.custom_tag != '' }}
           labels: |
-            org.opencontainers.image.title=Aniu
+            org.opencontainers.image.title=Aniu Plus
             org.opencontainers.image.description=AI simulated trading platform using the East Money Miaoxiang interface
-            org.opencontainers.image.source=https://github.com/Mustang0394/Aniu
+            org.opencontainers.image.source=https://github.com/VonZen/Aniu_plus
             org.opencontainers.image.licenses=MIT
 
       - name: Build and push image
