@@ -78,6 +78,11 @@
               <input v-model="settings.tg_chat_id" type="password" placeholder="-100xxxxxxxxxx" />
               <p class="field-help">接收通知的 Telegram 聊天 ID，可通过 @userinfobot 查询。</p>
             </label>
+            <label class="field">
+              <span>HTTP 代理</span>
+              <input v-model="settings.tg_http_proxy" placeholder="http://127.0.0.1:7890" />
+              <p class="field-help">仅用于 Telegram 请求；未填写时直连，省略协议时默认使用 http://。</p>
+            </label>
           </div>
           <div class="settings-right">
             <label class="field">

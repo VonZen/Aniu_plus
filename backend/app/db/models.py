@@ -61,6 +61,7 @@ class AppSettings(Base):
     llm_enable_reasoning_content_echo: Mapped[bool] = mapped_column(Boolean, default=False)
     tg_bot_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tg_chat_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tg_http_proxy: Mapped[str | None] = mapped_column(String(512), nullable=True)
     tg_notify_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     automation_context_source: Mapped[str | None] = mapped_column(
         String(32), nullable=True, default="default"

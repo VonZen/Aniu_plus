@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _mask_key(value: str | None) -> str | None:
@@ -29,7 +29,20 @@ class AppSettingsBase(BaseModel):
     llm_enable_reasoning_content_echo: bool = False
     tg_bot_token: str | None = Field(default=None, max_length=512)
     tg_chat_id: str | None = Field(default=None, max_length=512)
+    tg_http_proxy: str | None = Field(default=None, max_length=512)
     tg_notify_trade_enabled: bool = False
+
+    @field_validator("tg_http_proxy", mode="before")
+    @classmethod
+    def normalize_tg_http_proxy(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        proxy = str(value).strip()
+        if not proxy:
+            return None
+        if "://" not in proxy:
+            return f"http://{proxy}"
+        return proxy
 
 
 class AppSettingsRead(AppSettingsBase):

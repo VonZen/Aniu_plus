@@ -19,6 +19,7 @@ def send_telegram_trade_notification(
     run_id: int,
     trigger_source: str,
     schedule_name: str | None = None,
+    http_proxy: str | None = None,
 ) -> None:
     """Send a Telegram notification for executed trade orders.
 
@@ -40,9 +41,14 @@ def send_telegram_trade_notification(
         "text": text,
         "parse_mode": "HTML",
     }
+    proxy_url = _normalize_http_proxy(http_proxy)
 
     try:
-        with httpx.Client(timeout=_TIMEOUT_SECONDS) as client:
+        if proxy_url:
+            client_context = httpx.Client(timeout=_TIMEOUT_SECONDS, proxy=proxy_url)
+        else:
+            client_context = httpx.Client(timeout=_TIMEOUT_SECONDS)
+        with client_context as client:
             response = client.post(url, json=payload)
             response.raise_for_status()
         logger.info("Telegram notification sent: run_id=%s", run_id)
@@ -59,6 +65,21 @@ def send_telegram_trade_notification(
             run_id,
             exc,
         )
+    except Exception as exc:
+        logger.warning(
+            "Telegram notification failed: run_id=%s, error=%s",
+            run_id,
+            exc,
+        )
+
+
+def _normalize_http_proxy(http_proxy: str | None) -> str | None:
+    proxy_url = str(http_proxy or "").strip()
+    if not proxy_url:
+        return None
+    if "://" not in proxy_url:
+        return f"http://{proxy_url}"
+    return proxy_url
 
 
 def _build_trade_message(

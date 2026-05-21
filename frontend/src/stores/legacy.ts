@@ -39,6 +39,7 @@ const defaultSettings = (): SettingsPayload => ({
   llm_enable_reasoning_content_echo: false,
   tg_bot_token: '',
   tg_chat_id: '',
+  tg_http_proxy: '',
   tg_notify_trade_enabled: false,
   system_prompt: '你是跨越完整牛熊周期的顶尖私募投资机构老将与极度理性的专业交易员，你深谙A股政策驱动、外资流动与资金博弈机制。你必须持续运行以下自我驱动循环，监控经济、政策、盘面数据及资金流向，研判周期位置与市场情绪，寻找共识与预期差，定性博弈逻辑，自主决策执行交易操作。你的唯一目标是追求收益最大化。',
 })
@@ -220,6 +221,7 @@ export const useAppStore = defineStore('app', () => {
     settings.llm_enable_reasoning_content_echo = payload.llm_enable_reasoning_content_echo ?? false
     settings.tg_bot_token = payload.tg_bot_token ?? ''
     settings.tg_chat_id = payload.tg_chat_id ?? ''
+    settings.tg_http_proxy = payload.tg_http_proxy ?? ''
     settings.tg_notify_trade_enabled = payload.tg_notify_trade_enabled ?? false
     settings.system_prompt = payload.system_prompt
   }
@@ -344,6 +346,7 @@ export const useAppStore = defineStore('app', () => {
         llm_api_key: settings.llm_api_key || null,
         tg_bot_token: settings.tg_bot_token || null,
         tg_chat_id: settings.tg_chat_id || null,
+        tg_http_proxy: settings.tg_http_proxy || null,
       })
       applySettings(payload)
       notice.value = '系统设置已保存。'

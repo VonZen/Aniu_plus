@@ -101,6 +101,8 @@ def _ensure_app_settings_columns(engine) -> None:
         statements.append("ALTER TABLE app_settings ADD COLUMN tg_bot_token VARCHAR(255)")
     if "tg_chat_id" not in columns:
         statements.append("ALTER TABLE app_settings ADD COLUMN tg_chat_id VARCHAR(255)")
+    if "tg_http_proxy" not in columns:
+        statements.append("ALTER TABLE app_settings ADD COLUMN tg_http_proxy VARCHAR(512)")
     if "tg_notify_trade_enabled" not in columns:
         statements.append(
             "ALTER TABLE app_settings ADD COLUMN tg_notify_trade_enabled BOOLEAN DEFAULT 0"

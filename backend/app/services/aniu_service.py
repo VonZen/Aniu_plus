@@ -1800,6 +1800,7 @@ class AniuService:
                 ),
                 "tg_bot_token": getattr(settings, "tg_bot_token", None),
                 "tg_chat_id": getattr(settings, "tg_chat_id", None),
+                "tg_http_proxy": getattr(settings, "tg_http_proxy", None),
                 "tg_notify_trade_enabled": getattr(
                     settings, "tg_notify_trade_enabled", False
                 ),
@@ -2035,6 +2036,7 @@ class AniuService:
                     send_telegram_trade_notification(
                         bot_token=settings_snapshot.get("tg_bot_token") or "",
                         chat_id=settings_snapshot.get("tg_chat_id") or "",
+                        http_proxy=settings_snapshot.get("tg_http_proxy"),
                         trade_orders=[
                             action for action in executed_actions
                             if str(action.get("action") or "") in {"BUY", "SELL"}

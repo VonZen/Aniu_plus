@@ -9,6 +9,7 @@ export interface AppSettings {
   llm_enable_reasoning_content_echo: boolean
   tg_bot_token: string | null
   tg_chat_id: string | null
+  tg_http_proxy: string | null
   tg_notify_trade_enabled: boolean
   system_prompt: string
   created_at: string
