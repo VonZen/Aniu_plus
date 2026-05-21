@@ -31,6 +31,8 @@ def test_execute_run_rejects_unknown_schedule_id(monkeypatch, tmp_path) -> None:
     database_module._engine = None
     database_module._session_local = None
     get_settings.cache_clear()
+
+
 def test_moni_trade_requires_limit_price() -> None:
     with pytest.raises(RuntimeError, match="LIMIT 委托必须提供有效价格"):
         mx_skill_service._handle_moni_trade(
@@ -108,9 +110,10 @@ def test_moni_trade_allows_non_st_mainboard_buy() -> None:
     class StubClient:
         def __init__(self) -> None:
             self.last_trade_kwargs = None
+            self.last_query = None
 
         def query_market(self, query):
-            del query
+            self.last_query = query
             return {"entityName": "贵州茅台(600519.SH)"}
 
         def trade(self, **kwargs):
@@ -131,8 +134,91 @@ def test_moni_trade_allows_non_st_mainboard_buy() -> None:
     )
 
     assert client.last_trade_kwargs is not None
-    assert client.last_trade_kwargs["symbol"] == "600519.SH"
+    assert client.last_trade_kwargs["symbol"] == "600519"
     assert result["executed_action"]["symbol"] == "600519.SH"
+
+
+def test_moni_trade_strips_market_suffix_before_submit() -> None:
+    class StubClient:
+        def __init__(self) -> None:
+            self.last_trade_kwargs = None
+            self.last_query = None
+
+        def query_market(self, query):
+            self.last_query = query
+            return {"entityName": "贵州茅台(600519.SH)"}
+
+        def trade(self, **kwargs):
+            self.last_trade_kwargs = kwargs
+            return {"ok": True}
+
+    client = StubClient()
+    result = mx_skill_service._handle_moni_trade(
+        client=client,
+        app_settings=None,
+        arguments={
+            "action": "BUY",
+            "symbol": "600519.SH",
+            "quantity": 100,
+            "price_type": "MARKET",
+        },
+    )
+
+    assert client.last_query == "600519"
+    assert client.last_trade_kwargs is not None
+    assert client.last_trade_kwargs["symbol"] == "600519"
+    assert result["executed_action"]["symbol"] == "600519.SH"
+
+
+def test_moni_trade_strips_market_suffix_for_sell_submit() -> None:
+    class StubClient:
+        def __init__(self) -> None:
+            self.last_trade_kwargs = None
+
+        def trade(self, **kwargs):
+            self.last_trade_kwargs = kwargs
+            return {"ok": True}
+
+    client = StubClient()
+    result = mx_skill_service._handle_moni_trade(
+        client=client,
+        app_settings=None,
+        arguments={
+            "action": "SELL",
+            "symbol": "300059.SZ",
+            "quantity": 100,
+            "price_type": "MARKET",
+        },
+    )
+
+    assert client.last_trade_kwargs is not None
+    assert client.last_trade_kwargs["symbol"] == "300059"
+    assert result["executed_action"]["symbol"] == "300059.SZ"
+
+
+def test_moni_cancel_strips_market_suffix_before_submit() -> None:
+    class StubClient:
+        def __init__(self) -> None:
+            self.last_cancel_kwargs = None
+
+        def cancel_order(self, **kwargs):
+            self.last_cancel_kwargs = kwargs
+            return {"ok": True}
+
+    client = StubClient()
+    result = mx_skill_service._handle_moni_cancel(
+        client=client,
+        app_settings=None,
+        arguments={
+            "cancel_type": "order",
+            "order_id": "order-1",
+            "stock_code": "600519.SH",
+        },
+    )
+
+    assert client.last_cancel_kwargs is not None
+    assert client.last_cancel_kwargs["stock_code"] == "600519"
+    assert result["executed_action"]["stock_code"] == "600519.SH"
 
 
 def test_resolve_run_type_maps_schedule_names() -> None:

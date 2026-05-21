@@ -267,10 +267,26 @@ class MXExecutionService:
             except (TypeError, ValueError):
                 price = None
 
-        normalized_symbol = symbol
+        trade_symbol = symbol
+        display_symbol = symbol
+        parsed_trade_symbol: tuple[str, str, str] | None = None
+        try:
+            parsed_trade_symbol = _normalize_trade_symbol(symbol)
+            trade_symbol = parsed_trade_symbol[0]
+            display_symbol = parsed_trade_symbol[2]
+        except RuntimeError:
+            if action == "BUY":
+                raise
+
         if action == "BUY":
-            _, _, normalized_symbol = _normalize_trade_symbol(symbol)
-            if not _is_mainboard_symbol(normalized_symbol):
+            if parsed_trade_symbol is None:
+                raise RuntimeError(
+                    "股票代码格式无效，买卖 A 股时请使用 6 位代码或带交易所后缀的代码。"
+                )
+            code, market, normalized_symbol = parsed_trade_symbol
+            if market not in MAINBOARD_PREFIXES_BY_MARKET or not code.startswith(
+                MAINBOARD_PREFIXES_BY_MARKET[market]
+            ):
                 raise RuntimeError(
                     "当前仅允许买入沪深主板股票，不支持创业板、科创板、北交所或其他非主板标的。"
                 )
@@ -278,7 +294,7 @@ class MXExecutionService:
             security_name = str(arguments.get("name") or "").strip()
             if not security_name:
                 try:
-                    market_payload = client.query_market(normalized_symbol)
+                    market_payload = client.query_market(code)
                 except Exception as exc:
                     raise RuntimeError(
                         "买入前无法校验股票是否属于沪深主板且非 ST，请稍后重试。"
@@ -294,7 +310,7 @@ class MXExecutionService:
 
         result = client.trade(
             action=action,
-            symbol=normalized_symbol,
+            symbol=trade_symbol,
             quantity=quantity,
             price_type=price_type,
             price=price,
@@ -302,10 +318,10 @@ class MXExecutionService:
         return {
             "ok": True,
             "tool_name": "mx_moni_trade",
-            "summary": f"已提交{action}委托：{normalized_symbol} {quantity} 股。",
+            "summary": f"已提交{action}委托：{display_symbol} {quantity} 股。",
             "result": result,
             "executed_action": {
-                "symbol": normalized_symbol,
+                "symbol": display_symbol,
                 "name": str(arguments.get("name") or "").strip(),
                 "action": action,
                 "quantity": quantity,
@@ -323,16 +339,25 @@ class MXExecutionService:
         order_id = str(arguments.get("order_id") or "").strip() or None
         stock_code = str(arguments.get("stock_code") or "").strip() or None
         reason = str(arguments.get("reason") or "").strip()
+        cancel_stock_code = stock_code
+        display_stock_code = stock_code
 
         if cancel_type not in {"all", "order"}:
             raise RuntimeError("cancel_type 只能是 all 或 order。")
         if cancel_type == "order" and not order_id:
             raise RuntimeError("按委托编号撤单时必须提供 order_id。")
+        if stock_code:
+            try:
+                code, _, normalized_symbol = _normalize_trade_symbol(stock_code)
+                cancel_stock_code = code
+                display_stock_code = normalized_symbol
+            except RuntimeError:
+                pass
 
         result = client.cancel_order(
             cancel_type=cancel_type,
             order_id=order_id,
-            stock_code=stock_code,
+            stock_code=cancel_stock_code,
         )
         return {
             "ok": True,
@@ -345,7 +370,7 @@ class MXExecutionService:
                 "action": "CANCEL",
                 "cancel_type": cancel_type,
                 "order_id": order_id,
-                "stock_code": stock_code,
+                "stock_code": display_stock_code,
                 "reason": reason,
             },
         }
