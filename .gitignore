@@ -73,3 +73,4 @@ backend/data/skill_workspace/
 .playwright-mcp
 backend/data/jwt_secret.txt
 backend/data-backup-*/
+CODEBUDDY.md

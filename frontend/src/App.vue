@@ -56,17 +56,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import appPackage from '../package.json'
 import { appNavigation } from '@/config/navigation'
 import { useAppStore } from '@/stores/legacy'
+import { useGlobalRunNotifier } from '@/composables/useGlobalRunNotifier'
 import {
   clearStoredLoginFlag,
   clearStoredLoginNotice,
   clearStoredLoginRedirect,
   clearStoredToken,
+  getStoredToken,
 } from '@/services/api'
 
 const store = useAppStore()
@@ -74,14 +76,48 @@ const router = useRouter()
 const route = useRoute()
 const { errorMessage } = storeToRefs(store)
 const appVersion = appPackage.version
+const notifier = useGlobalRunNotifier()
 
 const isLoginPage = computed(() => route.path === '/login')
+
+// Refresh derived store data (account / runtime overview / schedules) whenever
+// any run finishes — manual or scheduled. Per-view composables register their
+// own listeners on top of this for view-specific reactions (Tasks list, Chat
+// persistent session).
+const disposeGlobalRefresh = notifier.onEvent((event) => {
+  if (event.type !== 'run_completed' && event.type !== 'run_failed') return
+  void store.refreshAfterRunCompletion().catch((err) => {
+    console.warn('[App] post-run global refresh failed', err)
+  })
+})
+
+function maybeStartNotifier() {
+  if (!isLoginPage.value && getStoredToken()) {
+    notifier.start()
+  } else {
+    notifier.stop()
+  }
+}
+
+onMounted(() => {
+  maybeStartNotifier()
+})
+
+watch(isLoginPage, () => {
+  maybeStartNotifier()
+})
+
+onBeforeUnmount(() => {
+  disposeGlobalRefresh()
+  notifier.stop()
+})
 
 function handleLogout() {
   clearStoredToken()
   clearStoredLoginFlag()
   clearStoredLoginNotice()
   clearStoredLoginRedirect()
+  notifier.stop()
   store.resetState()
   router.replace('/login')
 }

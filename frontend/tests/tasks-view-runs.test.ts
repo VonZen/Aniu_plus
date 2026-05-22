@@ -15,7 +15,11 @@ test('tasks view does not render load-more buttons for today or history runs', (
 test('tasks view keeps the today run group visible while a live placeholder card exists', () => {
   const source = readFileSync(new URL('../src/views/TasksView.vue', import.meta.url), 'utf-8')
 
-  assert.match(source, /todayRuns\.length \|\| todaySuccessCount \|\| todayFailedCount \|\| livePlaceholderVisible/)
+  // The today run group must stay rendered while a live placeholder card is
+  // shown so the in-flight run keeps a visible anchor even before the first
+  // record lands in todayRuns. (`todaySuccessCount` / `todayFailedCount` were
+  // dropped in v0.3.5 along with the run-summary counters.)
+  assert.match(source, /todayRuns\.length \|\| livePlaceholderVisible/)
 })
 
 test('analysis runs composable loads up to 100 runs per request without load-more pagination', () => {

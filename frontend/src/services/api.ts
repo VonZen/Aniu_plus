@@ -104,6 +104,21 @@ function handleUnauthorized(message = '登录已过期，请重新登录。'): n
   throw new Error(message)
 }
 
+/** Trigger the same logout-and-redirect flow `request()` uses for 401s.
+ *
+ * Exposed for stream consumers (SSE) that bypass `fetchWithTimeout` but still
+ * need to react to expired tokens. Returns void so callers can await without
+ * inheriting the `never` return type.
+ */
+export function handleAuthExpired(message?: string): void {
+  try {
+    handleUnauthorized(message)
+  } catch {
+    // handleUnauthorized always throws after the redirect; swallow it here so
+    // callers don't have to wrap the call in try/catch.
+  }
+}
+
 interface RequestOptions extends RequestInit {
   timeoutMs?: number
   skipAuthRedirect?: boolean
@@ -313,6 +328,9 @@ export const api = {
   },
   runEventsUrl(runId: number) {
     return `${API_PREFIX}/runs/${runId}/events`
+  },
+  globalEventsUrl() {
+    return `${API_PREFIX}/events`
   },
   listRuns(options: number | ListRunsOptions = 20) {
     const config = typeof options === 'number' ? { limit: options } : options

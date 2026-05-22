@@ -52,6 +52,7 @@ import ChatConversation from '@/components/chat/ChatConversation.vue'
 import ChatSessionSidebar from '@/components/chat/ChatSessionSidebar.vue'
 import { useChatSession } from '@/composables/useChatSession'
 import { useChatSessions } from '@/composables/useChatSessions'
+import { useGlobalRunNotifier } from '@/composables/useGlobalRunNotifier'
 import { usePersistentSession } from '@/composables/usePersistentSession'
 import { useRunStream } from '@/composables/useRunStream'
 
@@ -152,6 +153,20 @@ const disposeRunStreamListener = runStream.onEvent((event) => {
   appendPersistentSystemMessage(content, new Date().toISOString())
 })
 
+const globalNotifier = useGlobalRunNotifier()
+
+// Whenever any run finishes (manual or scheduled), the automation
+// persistent session may have new messages written by the agent. Refetch
+// it in the background so the next time the user selects "自动化会话"
+// they see up-to-date content. (If they're currently looking at it, the
+// refresh patches the visible list as well.)
+const disposeGlobalNotifierListener = globalNotifier.onEvent((event) => {
+  if (event.type !== 'run_completed' && event.type !== 'run_failed') return
+  void loadPersistentSession().catch((err) => {
+    console.warn('[ChatView] persistent session refresh failed', err)
+  })
+})
+
 watch(currentSessionId, async (sessionId) => {
   if (persistentSelected.value) {
     return
@@ -243,5 +258,6 @@ watch(persistentSelected, (selected) => {
 
 onBeforeUnmount(() => {
   disposeRunStreamListener()
+  disposeGlobalNotifierListener()
 })
 </script>

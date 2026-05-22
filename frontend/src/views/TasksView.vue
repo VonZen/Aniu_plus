@@ -277,6 +277,7 @@
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 
 import { useAnalysisRuns } from '@/composables/useAnalysisRuns'
+import { useGlobalRunNotifier } from '@/composables/useGlobalRunNotifier'
 import { useRunStream } from '@/composables/useRunStream'
 import { api } from '@/services/api'
 import { useAppStore } from '@/stores/legacy'
@@ -348,6 +349,23 @@ const {
   liveVisible,
   pendingPostRunId,
 } = runStream
+
+const globalNotifier = useGlobalRunNotifier()
+
+// Listen for the global SSE channel as well: scheduler-driven runs (and runs
+// finished from a different tab) never go through `runStream.start()`, so the
+// existing watcher on `runStream.state.status` would miss them. We feed the
+// run_id into the same `pendingPostRunId` slot the manual path uses, then run
+// the standard reconcile to refresh todayRuns / details / store data.
+const disposeGlobalNotifierListener = globalNotifier.onEvent((event) => {
+  if (event.type !== 'run_completed' && event.type !== 'run_failed') return
+  if (typeof event.run_id !== 'number') return
+  // Manually-started runs already trigger reconcile via the runStream watcher
+  // — skip duplicates here so we don't fire the same refresh twice.
+  if (liveRunId.value === event.run_id) return
+  pendingPostRunId.value = event.run_id
+  void reconcileFinishedRun()
+})
 
 const activeManualAction = ref<'analysis' | 'trade' | null>(null)
 
@@ -534,6 +552,7 @@ onBeforeUnmount(() => {
   // Intentionally NOT stopping runStream here: the singleton keeps the SSE
   // connection alive across route changes so returning to this tab
   // still shows the live progress and the post-run refresh.
+  disposeGlobalNotifierListener()
 })
 
 const historyDateInput = ref<HTMLInputElement | null>(null)

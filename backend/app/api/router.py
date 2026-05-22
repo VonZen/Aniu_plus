@@ -45,7 +45,7 @@ from app.services.chat_session_service import (
     MAX_UPLOAD_BYTES,
     chat_session_service,
 )
-from app.services.event_bus import event_bus
+from app.services.event_bus import broadcast_bus, event_bus
 from app.services.skill_admin_service import (
     MAX_SKILL_ARCHIVE_BYTES,
     skill_admin_service,
@@ -268,6 +268,41 @@ def run_events(
         except Exception as exc:  # noqa: BLE001
             err = json.dumps({"type": "failed", "message": str(exc)}, ensure_ascii=False)
             yield f"event: failed\ndata: {err}\n\n"
+
+    headers = {
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    }
+    return StreamingResponse(
+        _generator(),
+        media_type="text/event-stream",
+        headers=headers,
+    )
+
+
+@router.get("/events")
+def global_events(
+    _user: str = Depends(get_current_user),
+) -> StreamingResponse:
+    """Global SSE channel for run lifecycle events.
+
+    Subscribers receive ``run_completed`` / ``run_failed`` events for every
+    finished run (manual or scheduled), letting clients refresh derived data
+    without subscribing to a specific run_id.
+    """
+
+    def _generator():
+        try:
+            for event in broadcast_bus.stream():
+                event_type = str(event.get("type") or "message")
+                data = json.dumps(event, ensure_ascii=False)
+                yield f"event: {event_type}\ndata: {data}\n\n"
+        except Exception as exc:  # noqa: BLE001
+            err = json.dumps(
+                {"type": "error", "message": str(exc)}, ensure_ascii=False
+            )
+            yield f"event: error\ndata: {err}\n\n"
 
     headers = {
         "Cache-Control": "no-cache, no-transform",

@@ -1781,6 +1781,7 @@ class AniuService:
                 "llm_model": settings.llm_model,
                 "run_type": schedule.run_type if schedule else manual_resolved_run_type,
                 "schedule_id": schedule.id if schedule else None,
+                "schedule_name": schedule.name if schedule else None,
                 "system_prompt": settings.system_prompt,
                 "analyst_prompt": getattr(settings, "analyst_prompt", None),
                 "max_actions": int(getattr(settings, "max_actions", 2) or 2),
@@ -2111,6 +2112,10 @@ class AniuService:
                     "completed",
                     message="任务完成",
                     actions=len(executed_actions),
+                    run_type=str(settings_snapshot.get("run_type") or "analysis"),
+                    schedule_id=schedule_id,
+                    schedule_name=settings_snapshot.get("schedule_name"),
+                    trigger_source=trigger_source,
                 )
                 return None
 
@@ -2127,6 +2132,10 @@ class AniuService:
                     "completed",
                     message="任务完成",
                     actions=len(executed_actions),
+                    run_type=str(settings_snapshot.get("run_type") or "analysis"),
+                    schedule_id=schedule_id,
+                    schedule_name=settings_snapshot.get("schedule_name"),
+                    trigger_source=trigger_source,
                 )
                 return run
         except Exception as exc:
@@ -2209,7 +2218,14 @@ class AniuService:
                         else:
                             schedule.retry_count = max(int(schedule.retry_count or 0), 0)
                         db.add(schedule)
-            _emit("failed", message=str(exc))
+            _emit(
+                "failed",
+                message=str(exc),
+                run_type=str(settings_snapshot.get("run_type") or "analysis"),
+                schedule_id=schedule_id,
+                schedule_name=settings_snapshot.get("schedule_name"),
+                trigger_source=trigger_source,
+            )
             raise
 
     def execute_run(
@@ -2226,11 +2242,15 @@ class AniuService:
                 schedule_id,
                 manual_run_type,
             )
+            # Bind an emitter so synchronous triggers (manual /run, scheduler)
+            # also publish completed/failed events. make_emitter mirrors those
+            # onto broadcast_bus so global SSE subscribers can react.
             return self._run_body(
                 run_id=run_id,
                 settings_snapshot=settings_snapshot,
                 trigger_source=trigger_source,
                 schedule_id=schedule_id,
+                emit=make_emitter(run_id),
             )
         finally:
             self._run_lock.release()
