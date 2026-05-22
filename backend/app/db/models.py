@@ -63,6 +63,8 @@ class AppSettings(Base):
     tg_chat_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tg_http_proxy: Mapped[str | None] = mapped_column(String(512), nullable=True)
     tg_notify_trade_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    tg_notify_failure_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    app_external_base_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     automation_context_source: Mapped[str | None] = mapped_column(
         String(32), nullable=True, default="default"
     )

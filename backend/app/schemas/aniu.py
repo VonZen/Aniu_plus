@@ -31,6 +31,20 @@ class AppSettingsBase(BaseModel):
     tg_chat_id: str | None = Field(default=None, max_length=512)
     tg_http_proxy: str | None = Field(default=None, max_length=512)
     tg_notify_trade_enabled: bool = False
+    tg_notify_failure_enabled: bool = False
+    app_external_base_url: str | None = Field(default=None, max_length=512)
+
+    @field_validator("app_external_base_url", mode="before")
+    @classmethod
+    def normalize_app_external_base_url(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        url = str(value).strip()
+        if not url:
+            return None
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise ValueError("外部访问地址需以 http:// 或 https:// 开头")
+        return url.rstrip("/")
 
     @field_validator("tg_http_proxy", mode="before")
     @classmethod

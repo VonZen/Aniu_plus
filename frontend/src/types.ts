@@ -11,6 +11,8 @@ export interface AppSettings {
   tg_chat_id: string | null
   tg_http_proxy: string | null
   tg_notify_trade_enabled: boolean
+  tg_notify_failure_enabled: boolean
+  app_external_base_url: string | null
   system_prompt: string
   created_at: string
   updated_at: string

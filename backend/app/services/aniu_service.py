@@ -1823,6 +1823,12 @@ class AniuService:
                 "tg_notify_trade_enabled": getattr(
                     settings, "tg_notify_trade_enabled", False
                 ),
+                "tg_notify_failure_enabled": getattr(
+                    settings, "tg_notify_failure_enabled", False
+                ),
+                "app_external_base_url": getattr(
+                    settings, "app_external_base_url", None
+                ),
             }
         return run_id, settings_snapshot
 
@@ -2082,18 +2088,32 @@ class AniuService:
             # --- Telegram notification for trade orders ---
             if settings_snapshot.get("tg_notify_trade_enabled") and persisted_trade_orders:
                 from app.services.notification_service import send_telegram_trade_notification
+                # Best-effort account snapshot pulled from this run's own
+                # mx_get_balance / mx_get_positions tool calls (already in
+                # memory). If the run didn't query balance, we fall back to
+                # None and the notification simply omits the summary block.
+                account_summary = self._build_tg_account_summary(tool_calls)
+                detail_url = self._build_run_detail_url(
+                    settings_snapshot, run_id
+                )
                 try:
                     send_telegram_trade_notification(
                         bot_token=settings_snapshot.get("tg_bot_token") or "",
                         chat_id=settings_snapshot.get("tg_chat_id") or "",
                         http_proxy=settings_snapshot.get("tg_http_proxy"),
+                        # Include all executed trade-related actions (BUY/SELL/CANCEL)
+                        # so the notification reflects what the agent actually
+                        # attempted, not just what successfully went out.
                         trade_orders=[
                             action for action in executed_actions
-                            if str(action.get("action") or "") in {"BUY", "SELL"}
+                            if str(action.get("action") or "") in {"BUY", "SELL", "CANCEL"}
                         ],
                         run_id=run_id,
                         trigger_source=trigger_source,
                         schedule_name=settings_snapshot.get("schedule_name"),
+                        run_type=str(settings_snapshot.get("run_type") or "analysis"),
+                        account_summary=account_summary,
+                        detail_url=detail_url,
                     )
                 except Exception:
                     logger.warning(
@@ -2226,6 +2246,29 @@ class AniuService:
                 schedule_name=settings_snapshot.get("schedule_name"),
                 trigger_source=trigger_source,
             )
+            # --- Telegram notification for run failures ---
+            if settings_snapshot.get("tg_notify_failure_enabled"):
+                from app.services.notification_service import send_telegram_failure_notification
+                try:
+                    send_telegram_failure_notification(
+                        bot_token=settings_snapshot.get("tg_bot_token") or "",
+                        chat_id=settings_snapshot.get("tg_chat_id") or "",
+                        http_proxy=settings_snapshot.get("tg_http_proxy"),
+                        run_id=run_id,
+                        trigger_source=trigger_source,
+                        schedule_name=settings_snapshot.get("schedule_name"),
+                        run_type=str(settings_snapshot.get("run_type") or "analysis"),
+                        error_message=str(exc),
+                        detail_url=self._build_run_detail_url(
+                            settings_snapshot, run_id
+                        ),
+                    )
+                except Exception:
+                    logger.warning(
+                        "Telegram failure notification suppressed: run_id=%s",
+                        run_id,
+                        exc_info=True,
+                    )
             raise
 
     def execute_run(
@@ -2457,6 +2500,55 @@ class AniuService:
                 entry["symbol"] = str(executed_action.get("query") or "")
             executed_actions.append(entry)
         return executed_actions
+
+    def _build_tg_account_summary(
+        self, tool_calls: Any
+    ) -> dict[str, Any] | None:
+        """Build the optional account snapshot block for the Telegram notification.
+
+        Pulls ``mx_get_balance`` / ``mx_get_positions`` results out of the
+        current run's tool calls and reduces them to the small subset of
+        fields the notifier renders. Returns ``None`` when the run made no
+        balance call so the notification simply skips the block.
+        """
+        if not isinstance(tool_calls, list):
+            return None
+        balance_result = self._extract_tool_result(tool_calls, "mx_get_balance")
+        positions_result = self._extract_tool_result(tool_calls, "mx_get_positions")
+        if balance_result is None and positions_result is None:
+            return None
+        try:
+            overview = self._build_account_overview(balance_result, positions_result)
+        except Exception:  # noqa: BLE001 - account overview is best-effort here
+            logger.debug("tg account summary build failed", exc_info=True)
+            return None
+        snapshot = {
+            "total_assets": overview.get("total_assets"),
+            "cash_balance": overview.get("cash_balance"),
+            "daily_profit": overview.get("daily_profit"),
+            "daily_return_ratio": overview.get("daily_return_ratio"),
+        }
+        # Drop the snapshot entirely if every interesting field is missing.
+        if not any(value is not None for value in snapshot.values()):
+            return None
+        return snapshot
+
+    def _build_run_detail_url(
+        self, settings_snapshot: dict[str, Any], run_id: int
+    ) -> str | None:
+        """Build the optional 'view detail' URL appended to TG messages.
+
+        Uses the operator-configured ``app_external_base_url`` setting; when
+        unset, no link is rendered. We deliberately do not guess at the
+        scheme/host because the backend has no reliable way to know how the
+        UI is exposed externally (proxies, custom domains, etc.).
+        """
+        base = str(settings_snapshot.get("app_external_base_url") or "").strip()
+        if not base:
+            return None
+        if not (base.startswith("http://") or base.startswith("https://")):
+            return None
+        return f"{base.rstrip('/')}/tasks?run={int(run_id)}"
 
     def _build_analysis_summary(self, final_answer: Any) -> str | None:
         text = str(final_answer or "").strip()

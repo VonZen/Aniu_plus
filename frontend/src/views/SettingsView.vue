@@ -68,6 +68,21 @@
               </button>
             </div>
             <p class="field-help">启用后，交易执行时将向 Telegram 推送通知。</p>
+            <div class="field-toggle-row">
+              <span>失败通知 (Telegram)</span>
+              <button
+                type="button"
+                class="skill-toggle"
+                :class="{ 'is-on': settings.tg_notify_failure_enabled }"
+                role="switch"
+                :aria-checked="settings.tg_notify_failure_enabled"
+                @click="settings.tg_notify_failure_enabled = !settings.tg_notify_failure_enabled"
+              >
+                <span class="skill-toggle-thumb" aria-hidden="true"></span>
+                {{ settings.tg_notify_failure_enabled ? '启用' : '停用' }}
+              </button>
+            </div>
+            <p class="field-help">启用后，任务执行失败（含定时任务）也会向 Telegram 推送告警。</p>
             <label class="field">
               <span>Bot Token</span>
               <input v-model="settings.tg_bot_token" type="password" placeholder="123456:ABC-DEF..." />
@@ -82,6 +97,11 @@
               <span>HTTP 代理</span>
               <input v-model="settings.tg_http_proxy" placeholder="http://127.0.0.1:7890" />
               <p class="field-help">仅用于 Telegram 请求；未填写时直连，省略协议时默认使用 http://。</p>
+            </label>
+            <label class="field">
+              <span>外部访问地址</span>
+              <input v-model="settings.app_external_base_url" placeholder="https://aniu.example.com" />
+              <p class="field-help">通知消息中「查看详情」链接的基础 URL（含协议），未填写则不附带链接。</p>
             </label>
           </div>
           <div class="settings-right">
