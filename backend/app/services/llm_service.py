@@ -232,7 +232,7 @@ class LLMService:
         base_url: str,
         api_key: str,
         system_prompt: str | None,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         timeout_seconds: int = 60,
         tool_context: dict[str, Any] | None = None,
         emit: Any = None,
@@ -453,6 +453,9 @@ class LLMService:
                 "role": "assistant",
                 "content": message.get("content") or "",
             }
+            assistant_reasoning = _to_text_content(message.get("reasoning_content"))
+            if assistant_reasoning:
+                assistant_entry["reasoning_content"] = assistant_reasoning
             if message.get("tool_calls"):
                 assistant_entry["tool_calls"] = message["tool_calls"]
             if enable_reasoning_echo and message.get("reasoning_content"):

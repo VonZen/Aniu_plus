@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import { api } from '@/services/api'
-import type { AccountOverview, AppSettings, RunDetail, RuntimeOverview, ScheduleConfig } from '@/types'
+import type { AccountOverview, AppSettings, RunDetail, ScheduleConfig } from '@/types'
 
 const ACCOUNT_REFRESH_COOLDOWN_MS = 60 * 60 * 1000
 const ACCOUNT_REFRESH_STORAGE_KEY = 'aniu-account-last-refresh-at'
@@ -128,53 +128,10 @@ function parseTradeWindowExpression(expression: string) {
   }
 }
 
-function defaultRuntimeOverview(): RuntimeOverview {
-  return {
-    last_run: {
-      start_time: '--',
-      end_time: '--',
-      status: 'idle',
-      status_text: '暂无记录',
-      duration: '--',
-      input_tokens: '--',
-      output_tokens: '--',
-      total_tokens: '--',
-    },
-    today: {
-      analysis_count: 0,
-      api_calls: 0,
-      trades: 0,
-      success_rate: 0,
-      input_tokens: '--',
-      output_tokens: '--',
-      total_tokens: '--',
-    },
-    recent_3_days: {
-      analysis_count: 0,
-      api_calls: 0,
-      trades: 0,
-      success_rate: 0,
-      input_tokens: '--',
-      output_tokens: '--',
-      total_tokens: '--',
-    },
-    recent_7_days: {
-      analysis_count: 0,
-      api_calls: 0,
-      trades: 0,
-      success_rate: 0,
-      input_tokens: '--',
-      output_tokens: '--',
-      total_tokens: '--',
-    },
-  }
-}
-
 export const useAppStore = defineStore('app', () => {
   const settings = reactive<SettingsPayload>(defaultSettings())
   const schedules = ref<ScheduleEditor[]>([])
   const account = ref<AccountOverview>(defaultAccount())
-  const runtimeOverview = ref<RuntimeOverview>(defaultRuntimeOverview())
   const runDetailsMap = ref<Record<number, RunDetail>>({})
   const accountLastManualRefreshAt = ref(readLastAccountRefreshAt())
   const accountRefreshTick = ref(Date.now())
@@ -276,7 +233,6 @@ export const useAppStore = defineStore('app', () => {
   async function refreshAfterRunCompletion() {
     const results = await Promise.allSettled([
       refreshAccountData(),
-      refreshRuntimeOverview(),
       loadSchedule(),
     ])
 
@@ -284,10 +240,6 @@ export const useAppStore = defineStore('app', () => {
     if (failed) {
       throw (failed.reason instanceof Error ? failed.reason : new Error('运行完成后的数据刷新失败'))
     }
-  }
-
-  async function refreshRuntimeOverview() {
-    runtimeOverview.value = await api.getRuntimeOverview()
   }
 
   async function refreshAccountData() {
@@ -325,7 +277,6 @@ export const useAppStore = defineStore('app', () => {
         loadSettings(),
         loadSchedule(),
         refreshAccountData(),
-        refreshRuntimeOverview(),
       ])
       const errors = results
         .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
@@ -345,7 +296,6 @@ export const useAppStore = defineStore('app', () => {
     Object.assign(settings, defaultSettings())
     schedules.value = []
     account.value = defaultAccount()
-    runtimeOverview.value = defaultRuntimeOverview()
     runDetailsMap.value = {}
     accountLastManualRefreshAt.value = readLastAccountRefreshAt()
     accountRefreshTick.value = Date.now()
@@ -404,7 +354,7 @@ export const useAppStore = defineStore('app', () => {
     try {
       const run = await api.runNow(scheduleId)
       notice.value = `任务运行完成：#${run.id} ${run.status}`
-      await Promise.all([refreshAccountData(), refreshRuntimeOverview(), loadSchedule()])
+      await Promise.all([refreshAccountData(), loadSchedule()])
       return run
     } catch (error) {
       errorMessage.value = (error as Error).message
@@ -429,7 +379,6 @@ export const useAppStore = defineStore('app', () => {
     accountPositionCount,
     activeScheduleCards,
     nextScheduledTask,
-    runtimeOverview,
     accountRefreshing,
     canManualRefreshAccount,
     accountRefreshCooldownText,
@@ -439,7 +388,6 @@ export const useAppStore = defineStore('app', () => {
     loadSchedule,
     loadRunDetail,
     refreshAfterRunCompletion,
-    refreshRuntimeOverview,
     refreshAccountData,
     refreshAccountDataWithCooldown,
     refreshAll,
