@@ -13,6 +13,19 @@ export interface AppSettings {
   tg_notify_trade_enabled: boolean
   tg_notify_failure_enabled: boolean
   app_external_base_url: string | null
+  trade_enabled: boolean
+  max_actions: number
+  effective_capital: number
+  max_position_pct: number
+  max_total_position_pct: number
+  max_order_amount: number
+  max_daily_loss: number
+  max_drawdown_pct: number
+  stop_loss_pct: number
+  take_profit_pct: number
+  max_consecutive_losses: number
+  min_market_trend_score: number
+  allow_short: boolean
   system_prompt: string
   created_at: string
   updated_at: string

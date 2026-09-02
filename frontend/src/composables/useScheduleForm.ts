@@ -115,8 +115,8 @@ const defaultState = (): ScheduleFormState => ({
   preMarket: { enabled: false, hour: 8, minute: 0, prompt: '你正在执行盘前分析任务，请分析今日市场情况和持仓情况，做好今日市场走势预测，为你决策交易做好准备。' },
   postMarket: { enabled: false, hour: 15, minute: 30, prompt: '你正在执行收盘分析任务，请对今日市场和交易操作进行全面复盘，总结今日市场和明日可能的走势。' },
   midday: { enabled: false, hour: 12, minute: 0, prompt: '你正在执行午间复盘任务，请对上午市场和交易操作进行复盘，做好下午市场走势预测，为你决策交易做好准备。' },
-  morning: { enabled: true, intervalValue: 15, intervalUnit: 'minutes', prompt: '你正在执行盘中交易操作，你的唯一目标是追求收益最大化。' },
-  afternoon: { enabled: true, intervalValue: 15, intervalUnit: 'minutes', prompt: '你正在执行盘中交易操作，你的唯一目标是追求收益最大化。' },
+  morning: { enabled: false, intervalValue: 30, intervalUnit: 'minutes', prompt: '你正在执行盘中交易操作，请先控制风险：优先处理持仓止损/止盈，新开仓必须满足趋势与资金条件；没有高确信信号时输出 NO_ACTION。' },
+  afternoon: { enabled: false, intervalValue: 30, intervalUnit: 'minutes', prompt: '你正在执行盘中交易操作，请先控制风险：优先处理持仓止损/止盈，新开仓必须满足趋势与资金条件；没有高确信信号时输出 NO_ACTION。' },
 })
 
 function parseCron(cronExpression: string) {

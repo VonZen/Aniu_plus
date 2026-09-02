@@ -3655,6 +3655,14 @@ textarea {
   min-height: 200px;
 }
 
+.settings-section-title {
+  margin: 12px 0 0;
+  font-size: 16px;
+  color: #e6edf7;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 16px;
+}
+
 .skills-panel {
   display: flex;
   flex-direction: column;

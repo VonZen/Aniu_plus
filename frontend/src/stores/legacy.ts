@@ -43,7 +43,20 @@ const defaultSettings = (): SettingsPayload => ({
   tg_notify_trade_enabled: false,
   tg_notify_failure_enabled: false,
   app_external_base_url: '',
-  system_prompt: '你是跨越完整牛熊周期的顶尖私募投资机构老将与极度理性的专业交易员，你深谙A股政策驱动、外资流动与资金博弈机制。你必须持续运行以下自我驱动循环，监控经济、政策、盘面数据及资金流向，研判周期位置与市场情绪，寻找共识与预期差，定性博弈逻辑，自主决策执行交易操作。你的唯一目标是追求收益最大化。',
+  trade_enabled: true,
+  max_actions: 2,
+  effective_capital: 30000,
+  max_position_pct: 0.3,
+  max_total_position_pct: 0.8,
+  max_order_amount: 30000,
+  max_daily_loss: 3000,
+  max_drawdown_pct: 0.15,
+  stop_loss_pct: 0.05,
+  take_profit_pct: 0.1,
+  max_consecutive_losses: 3,
+  min_market_trend_score: 0,
+  allow_short: false,
+  system_prompt: '你是跨越完整牛熊周期的顶尖私募投资机构老将与极度理性的专业交易员，你深谙A股政策驱动、外资流动与资金博弈机制。你必须持续运行以下自我驱动循环，监控经济、政策、盘面数据及资金流向，研判周期位置与市场情绪，寻找共识与预期差，定性博弈逻辑，自主决策执行交易操作。你的核心目标是风险调整后的长期正收益：优先保住本金、控制回撤、避免过度交易；没有高确信机会时，不交易也是一种正确的决策。',
 })
 
 const defaultAccount = (): AccountOverview => ({
@@ -201,6 +214,19 @@ export const useAppStore = defineStore('app', () => {
     settings.tg_notify_trade_enabled = payload.tg_notify_trade_enabled ?? false
     settings.tg_notify_failure_enabled = payload.tg_notify_failure_enabled ?? false
     settings.app_external_base_url = payload.app_external_base_url ?? ''
+    settings.trade_enabled = payload.trade_enabled ?? true
+    settings.max_actions = payload.max_actions ?? 2
+    settings.effective_capital = payload.effective_capital ?? 30000
+    settings.max_position_pct = payload.max_position_pct ?? 0.3
+    settings.max_total_position_pct = payload.max_total_position_pct ?? 0.8
+    settings.max_order_amount = payload.max_order_amount ?? 30000
+    settings.max_daily_loss = payload.max_daily_loss ?? 3000
+    settings.max_drawdown_pct = payload.max_drawdown_pct ?? 0.15
+    settings.stop_loss_pct = payload.stop_loss_pct ?? 0.05
+    settings.take_profit_pct = payload.take_profit_pct ?? 0.1
+    settings.max_consecutive_losses = payload.max_consecutive_losses ?? 3
+    settings.min_market_trend_score = payload.min_market_trend_score ?? 0
+    settings.allow_short = payload.allow_short ?? false
     settings.system_prompt = payload.system_prompt
   }
 

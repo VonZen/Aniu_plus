@@ -378,6 +378,14 @@ def test_build_trade_execution_prompt_forces_execute_or_no_action() -> None:
         analyst_prompt="当信号不明确时返回HOLD。",
         max_actions=2,
         trade_enabled=True,
+        effective_capital=30000,
+        max_position_pct=0.3,
+        max_total_position_pct=0.8,
+        max_order_amount=30000,
+        max_daily_loss=3000,
+        stop_loss_pct=0.05,
+        take_profit_pct=0.10,
+        max_consecutive_losses=3,
     )
 
     prompt = aniu_service._build_trade_execution_prompt(settings)
@@ -385,8 +393,9 @@ def test_build_trade_execution_prompt_forces_execute_or_no_action() -> None:
     assert "这是交易执行任务，不是纯分析任务" in prompt
     assert "`mx_moni_trade`" in prompt
     assert "`NO_ACTION`" in prompt
-    assert "最多执行 2 个买卖动作" in prompt
+    assert "最多提交 2 个买卖提案" in prompt
     assert "禁止买入名称含 `ST` 或 `*ST`" in prompt
+    assert "有效本金：30000 元" in prompt
 
 
 def test_consume_llm_stream_uses_fresh_http_client_per_request(monkeypatch) -> None:

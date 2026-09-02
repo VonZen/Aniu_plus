@@ -33,6 +33,27 @@ class AppSettingsBase(BaseModel):
     tg_notify_trade_enabled: bool = False
     tg_notify_failure_enabled: bool = False
     app_external_base_url: str | None = Field(default=None, max_length=512)
+    trade_enabled: bool = True
+    max_actions: int = Field(default=2, ge=1, le=20)
+    effective_capital: float = Field(default=30000.0, gt=0)
+    max_position_pct: float = Field(default=0.3, gt=0, le=1.0)
+    max_total_position_pct: float = Field(default=0.8, gt=0, le=1.0)
+    max_order_amount: float = Field(default=30000.0, gt=0)
+    max_daily_loss: float = Field(default=3000.0, gt=0)
+    max_drawdown_pct: float = Field(default=0.15, gt=0, le=1.0)
+    stop_loss_pct: float = Field(default=0.05, gt=0, le=1.0)
+    take_profit_pct: float = Field(default=0.10, gt=0, le=1.0)
+    max_consecutive_losses: int = Field(default=3, ge=1, le=50)
+    min_market_trend_score: float = Field(default=0.0, ge=-1.0, le=1.0)
+    allow_short: bool = False
+
+    @field_validator("max_total_position_pct")
+    @classmethod
+    def validate_position_pct_ordering(cls, value: float, info: Any) -> float:
+        max_position_pct = info.data.get("max_position_pct")
+        if max_position_pct is not None and value < max_position_pct:
+            raise ValueError("最大总仓位不能小于单票最大仓位")
+        return value
 
     @field_validator("app_external_base_url", mode="before")
     @classmethod

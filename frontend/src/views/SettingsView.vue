@@ -103,6 +103,110 @@
               <input v-model="settings.app_external_base_url" placeholder="https://aniu.example.com" />
               <p class="field-help">通知消息中「查看详情」链接的基础 URL（含协议），未填写则不附带链接。</p>
             </label>
+
+            <h3 class="settings-section-title">交易风控</h3>
+            <div class="field-toggle-row">
+              <span>自动交易开关</span>
+              <button
+                type="button"
+                class="skill-toggle"
+                :class="{ 'is-on': settings.trade_enabled }"
+                role="switch"
+                :aria-checked="settings.trade_enabled"
+                @click="settings.trade_enabled = !settings.trade_enabled"
+              >
+                <span class="skill-toggle-thumb" aria-hidden="true"></span>
+                {{ settings.trade_enabled ? '启用' : '停用' }}
+              </button>
+            </div>
+            <p class="field-help">关闭后，所有买卖/撤单都会被后端硬拦截，包括定时任务和聊天里的交易工具。</p>
+            <div class="settings-inline-fields">
+              <label class="field">
+                <span>有效本金</span>
+                <input v-model.number="settings.effective_capital" type="number" min="1" step="100" />
+                <p class="field-help">所有仓位和金额都按该本金计算，后端强制执行。</p>
+              </label>
+              <label class="field">
+                <span>每轮最大动作数</span>
+                <input v-model.number="settings.max_actions" type="number" min="1" max="20" step="1" />
+                <p class="field-help">每轮最多通过的买卖动作数（不含撤单）。</p>
+              </label>
+            </div>
+            <div class="settings-inline-fields">
+              <label class="field">
+                <span>单票最大仓位 %</span>
+                <input v-model.number="settings.max_position_pct" type="number" min="0.01" max="1" step="0.05" />
+                <p class="field-help">单只股票占用有效本金的比例上限。</p>
+              </label>
+              <label class="field">
+                <span>单票最大仓位 %</span>
+                <input v-model.number="settings.max_position_pct" type="number" min="0.01" max="1" step="0.05" />
+                <p class="field-help">单只股票占用有效本金的比例上限。</p>
+              </label>
+            </div>
+            <div class="settings-inline-fields">
+              <label class="field">
+                <span>总仓位上限 %</span>
+                <input v-model.number="settings.max_total_position_pct" type="number" min="0.01" max="1" step="0.05" />
+                <p class="field-help">全部持仓占有效本金的比例上限。</p>
+              </label>
+              <label class="field">
+                <span>单笔金额上限</span>
+                <input v-model.number="settings.max_order_amount" type="number" min="100" step="100" />
+                <p class="field-help">单笔买入金额上限，防止单次下单过大。</p>
+              </label>
+            </div>
+            <div class="settings-inline-fields">
+              <label class="field">
+                <span>当日最大亏损熔断</span>
+                <input v-model.number="settings.max_daily_loss" type="number" min="1" step="100" />
+                <p class="field-help">当日亏损达到该金额后禁止新开仓。</p>
+              </label>
+              <label class="field">
+                <span>最大回撤熔断 %</span>
+                <input v-model.number="settings.max_drawdown_pct" type="number" min="0.01" max="1" step="0.05" />
+                <p class="field-help">总收益率回撤超过该比例后禁止新开仓。</p>
+              </label>
+            </div>
+            <div class="settings-inline-fields">
+              <label class="field">
+                <span>建议止损 %</span>
+                <input v-model.number="settings.stop_loss_pct" type="number" min="0.01" max="1" step="0.01" />
+                <p class="field-help">单只持仓亏损达到该比例时应考虑卖出。</p>
+              </label>
+              <label class="field">
+                <span>建议止盈 %</span>
+                <input v-model.number="settings.take_profit_pct" type="number" min="0.01" max="1" step="0.01" />
+                <p class="field-help">单只持仓盈利达到该比例时应考虑卖出。</p>
+              </label>
+            </div>
+            <div class="settings-inline-fields">
+              <label class="field">
+                <span>连续亏损暂停</span>
+                <input v-model.number="settings.max_consecutive_losses" type="number" min="1" step="1" />
+                <p class="field-help">连续亏损达到该次数后禁止新开仓。</p>
+              </label>
+              <label class="field">
+                <span>大盘趋势分阈值</span>
+                <input v-model.number="settings.min_market_trend_score" type="number" min="-1" max="1" step="0.1" />
+                <p class="field-help">预留的市场趋势分下限；当前默认 0 不启用额外过滤。</p>
+              </label>
+            </div>
+            <div class="field-toggle-row">
+              <span>允许做空</span>
+              <button
+                type="button"
+                class="skill-toggle"
+                :class="{ 'is-on': settings.allow_short }"
+                role="switch"
+                :aria-checked="settings.allow_short"
+                @click="settings.allow_short = !settings.allow_short"
+              >
+                <span class="skill-toggle-thumb" aria-hidden="true"></span>
+                {{ settings.allow_short ? '启用' : '停用' }}
+              </button>
+            </div>
+            <p class="field-help">A 股模拟盘当前不建议开启；后端已默认拒绝无持仓的卖出。</p>
           </div>
           <div class="settings-right">
             <label class="field">

@@ -111,6 +111,7 @@ class MXExecutionService:
         app_settings: Any,
         tool_name: str,
         arguments: dict[str, Any],
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         handler = self._handlers.get(tool_name)
         if handler is None:
@@ -120,10 +121,16 @@ class MXExecutionService:
                 "error": f"未知工具调用: {tool_name}",
             }
 
+        handler_kwargs: dict[str, Any] = {
+            "client": client,
+            "app_settings": app_settings,
+            "arguments": arguments,
+        }
+        if tool_name in {"mx_moni_trade", "mx_moni_cancel"}:
+            handler_kwargs["context"] = context or {}
+
         try:
-            return handler(
-                client=client, app_settings=app_settings, arguments=arguments
-            )
+            return handler(**handler_kwargs)
         except Exception as exc:
             guidance = self._build_error_guidance(str(exc))
             return {
@@ -233,9 +240,16 @@ class MXExecutionService:
         }
 
     def _handle_moni_trade(
-        self, *, client: MXClient, app_settings: Any, arguments: dict[str, Any]
+        self,
+        *,
+        client: MXClient,
+        app_settings: Any,
+        arguments: dict[str, Any],
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        del app_settings
+        trade_mode = str((context or {}).get("trade_mode") or "execute").strip().lower()
+        if not bool(getattr(app_settings, "trade_enabled", True)):
+            raise RuntimeError("trade disabled by settings")
         action = str(arguments.get("action") or "").upper()
         symbol = str(arguments.get("symbol") or "").strip()
         price_type = str(arguments.get("price_type") or "MARKET").upper()
@@ -308,6 +322,27 @@ class MXExecutionService:
             if _is_st_stock_name(security_name):
                 raise RuntimeError("当前禁止买入 ST 或 *ST 股票。")
 
+        if trade_mode == "proposal":
+            return {
+                "ok": True,
+                "tool_name": "mx_moni_trade",
+                "summary": f"已生成{action}交易提案：{display_symbol} {quantity} 股（待风控审批后执行）。",
+                "result": {
+                    "preview_only": True,
+                    "message": "交易提案已生成，等待后端风控审批。",
+                },
+                "executed_action": {
+                    "symbol": display_symbol,
+                    "name": str(arguments.get("name") or "").strip(),
+                    "action": action,
+                    "quantity": quantity,
+                    "price_type": price_type,
+                    "price": price,
+                    "reason": reason,
+                    "status": "pending",
+                },
+            }
+
         result = client.trade(
             action=action,
             symbol=trade_symbol,
@@ -332,9 +367,16 @@ class MXExecutionService:
         }
 
     def _handle_moni_cancel(
-        self, *, client: MXClient, app_settings: Any, arguments: dict[str, Any]
+        self,
+        *,
+        client: MXClient,
+        app_settings: Any,
+        arguments: dict[str, Any],
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        del app_settings
+        trade_mode = str((context or {}).get("trade_mode") or "execute").strip().lower()
+        if not bool(getattr(app_settings, "trade_enabled", True)):
+            raise RuntimeError("trade disabled by settings")
         cancel_type = str(arguments.get("cancel_type") or "").strip().lower()
         order_id = str(arguments.get("order_id") or "").strip() or None
         stock_code = str(arguments.get("stock_code") or "").strip() or None
@@ -353,6 +395,27 @@ class MXExecutionService:
                 display_stock_code = normalized_symbol
             except RuntimeError:
                 pass
+
+        if trade_mode == "proposal":
+            return {
+                "ok": True,
+                "tool_name": "mx_moni_cancel",
+                "summary": "已生成撤单提案（待风控审批后执行）。"
+                if cancel_type == "all"
+                else f"已生成撤单提案：{order_id}（待风控审批后执行）。",
+                "result": {
+                    "preview_only": True,
+                    "message": "撤单提案已生成，等待后端风控审批。",
+                },
+                "executed_action": {
+                    "action": "CANCEL",
+                    "cancel_type": cancel_type,
+                    "order_id": order_id,
+                    "stock_code": display_stock_code,
+                    "reason": reason,
+                    "status": "pending",
+                },
+            }
 
         result = client.cancel_order(
             cancel_type=cancel_type,

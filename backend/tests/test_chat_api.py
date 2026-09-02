@@ -550,7 +550,7 @@ def test_mx_core_tools_can_execute_in_chat_without_prebuilt_client(
         def __exit__(self, *args: object) -> None:
             captured["exited"] = True
 
-    def fake_execute_tool(*, client, app_settings, tool_name, arguments):
+    def fake_execute_tool(*, client, app_settings, tool_name, arguments, context=None):
         captured["client"] = client
         captured["tool_name"] = tool_name
         captured["arguments"] = arguments
@@ -603,7 +603,7 @@ def test_mx_core_tools_use_mx_client_config_from_context(monkeypatch, tmp_path) 
         def __exit__(self, *args: object) -> None:
             captured["exited"] = True
 
-    def fake_execute_tool(*, client, app_settings, tool_name, arguments):
+    def fake_execute_tool(*, client, app_settings, tool_name, arguments, context=None):
         captured["client"] = client
         captured["tool_name"] = tool_name
         captured["arguments"] = arguments

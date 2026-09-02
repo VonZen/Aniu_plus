@@ -375,6 +375,9 @@ class LLMService:
                     run_type=run_type,
                     app_settings=app_settings,
                     client=client,
+                    base_context={"trade_mode": "proposal"}
+                    if run_type == "trade"
+                    else None,
                 ),
             )
 

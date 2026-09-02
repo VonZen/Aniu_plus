@@ -35,6 +35,7 @@ class Skill(BaseSkill):
                 arguments=arguments,
                 client=client,
                 app_settings=app_settings,
+                context=context,
             )
 
         config = get_mx_client_config(context)
@@ -44,6 +45,7 @@ class Skill(BaseSkill):
                 arguments=arguments,
                 client=runtime_client,
                 app_settings=app_settings,
+                context=context,
             )
 
 

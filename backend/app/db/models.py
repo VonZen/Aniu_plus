@@ -47,6 +47,17 @@ class AppSettings(Base):
     )
     max_actions: Mapped[int] = mapped_column(Integer, default=2)
     trade_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    effective_capital: Mapped[float] = mapped_column(Float, default=30000.0)
+    max_position_pct: Mapped[float] = mapped_column(Float, default=0.3)
+    max_total_position_pct: Mapped[float] = mapped_column(Float, default=0.8)
+    max_order_amount: Mapped[float] = mapped_column(Float, default=30000.0)
+    max_daily_loss: Mapped[float] = mapped_column(Float, default=3000.0)
+    max_drawdown_pct: Mapped[float] = mapped_column(Float, default=0.15)
+    stop_loss_pct: Mapped[float] = mapped_column(Float, default=0.05)
+    take_profit_pct: Mapped[float] = mapped_column(Float, default=0.10)
+    max_consecutive_losses: Mapped[int] = mapped_column(Integer, default=3)
+    min_market_trend_score: Mapped[float] = mapped_column(Float, default=0.0)
+    allow_short: Mapped[bool] = mapped_column(Boolean, default=False)
     automation_session_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     automation_context_window_tokens: Mapped[int | None] = mapped_column(
         Integer, nullable=True, default=128000

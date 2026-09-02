@@ -76,7 +76,7 @@ from app.services.settings_service import settings_service
 from app.services.token_estimator import estimate_messages_tokens, estimate_text_tokens
 from app.services.trading_calendar_service import trading_calendar_service
 from skills.mx_core.client import MXClient
-from skills.mx_core.execution import mx_execution_service
+from skills.mx_core.execution import _normalize_trade_symbol, mx_execution_service
 
 
 logger = logging.getLogger(__name__)
@@ -1041,6 +1041,7 @@ class AniuService:
             settings_snapshot = {
                 "id": settings.id,
                 "mx_api_key": settings.mx_api_key,
+                "mx_api_url": getattr(settings, "mx_api_url", None),
                 "llm_base_url": settings.llm_base_url,
                 "llm_api_key": settings.llm_api_key,
                 "llm_model": settings.llm_model,
@@ -1051,6 +1052,17 @@ class AniuService:
                 "analyst_prompt": getattr(settings, "analyst_prompt", None),
                 "max_actions": int(getattr(settings, "max_actions", 2) or 2),
                 "trade_enabled": bool(getattr(settings, "trade_enabled", True)),
+                "effective_capital": float(getattr(settings, "effective_capital", 30000.0) or 30000.0),
+                "max_position_pct": float(getattr(settings, "max_position_pct", 0.3) or 0.3),
+                "max_total_position_pct": float(getattr(settings, "max_total_position_pct", 0.8) or 0.8),
+                "max_order_amount": float(getattr(settings, "max_order_amount", 30000.0) or 30000.0),
+                "max_daily_loss": float(getattr(settings, "max_daily_loss", 3000.0) or 3000.0),
+                "max_drawdown_pct": float(getattr(settings, "max_drawdown_pct", 0.15) or 0.15),
+                "stop_loss_pct": float(getattr(settings, "stop_loss_pct", 0.05) or 0.05),
+                "take_profit_pct": float(getattr(settings, "take_profit_pct", 0.10) or 0.10),
+                "max_consecutive_losses": int(getattr(settings, "max_consecutive_losses", 3) or 3),
+                "min_market_trend_score": float(getattr(settings, "min_market_trend_score", 0.0) or 0.0),
+                "allow_short": bool(getattr(settings, "allow_short", False)),
                 "task_prompt": schedule.task_prompt if schedule else manual_task_prompt,
                 "timeout_seconds": int(
                     schedule.timeout_seconds if schedule else 1800
@@ -1102,23 +1114,36 @@ class AniuService:
         analyst_prompt = str(getattr(settings, "analyst_prompt", "") or "").strip()
         max_actions = max(1, int(getattr(settings, "max_actions", 2) or 2))
         trade_enabled = bool(getattr(settings, "trade_enabled", True))
+        effective_capital = float(getattr(settings, "effective_capital", 30000.0) or 30000.0)
+        max_position_pct = float(getattr(settings, "max_position_pct", 0.3) or 0.3)
+        max_total_position_pct = float(getattr(settings, "max_total_position_pct", 0.8) or 0.8)
+        max_order_amount = float(getattr(settings, "max_order_amount", 30000.0) or 30000.0)
+        max_daily_loss = float(getattr(settings, "max_daily_loss", 3000.0) or 3000.0)
+        stop_loss_pct = float(getattr(settings, "stop_loss_pct", 0.05) or 0.05)
+        take_profit_pct = float(getattr(settings, "take_profit_pct", 0.10) or 0.10)
+        max_consecutive_losses = int(getattr(settings, "max_consecutive_losses", 3) or 3)
 
         execution_lines = [
             "这是交易执行任务，不是纯分析任务。",
-            "你必须在本轮给出可执行结果，禁止只输出“可轻仓试错”“可以考虑开仓”“关注某标的”这类模糊建议后不落地。",
+            "你只能提交交易提案，不能直接完成下单。`mx_moni_trade` / `mx_moni_cancel` 在本任务中只会生成待审批提案，实际委托由后端风控审批通过后执行。",
             "本轮只允许两种结果：",
-            "1. 若判断存在足够明确的交易机会，直接调用 `mx_moni_trade` 或 `mx_moni_cancel` 执行具体操作；",
+            "1. 若判断存在足够明确的交易机会，调用 `mx_moni_trade` 或 `mx_moni_cancel` 提交提案；",
             "2. 若没有足够把握，明确输出 `NO_ACTION`，并说明不交易的关键原因。",
-            "如果账户当前空仓，而你判断适合建仓，必须明确到具体标的、方向、数量、价格方式，并直接发起工具调用。",
+            "如果账户当前空仓，而你判断适合建仓，必须明确到具体标的、方向、数量、价格方式，并提交提案。",
             "买入标的只允许沪深主板股票：上证 600/601/603/605，深证 000/001/002。",
             "禁止买入名称含 `ST` 或 `*ST` 的股票；如无法确认股票名称或板块归属，则不得买入。",
             "如果已有持仓，优先处理持仓，再决定是否新开仓。",
-            f"本轮最多执行 {max_actions} 个买卖动作（不含撤单）。",
+            f"本轮最多提交 {max_actions} 个买卖提案（不含撤单）。",
             "不要把‘盘中继续观察’当作默认结论；只有在确实不满足交易条件时，才能输出 `NO_ACTION`。",
+            f"有效本金：{effective_capital:.0f} 元。",
+            f"单票最大仓位：{max_position_pct * 100:.0f}% 有效本金；总仓位上限：{max_total_position_pct * 100:.0f}%。",
+            f"单笔金额上限：{max_order_amount:.0f} 元；当日最大亏损熔断：{max_daily_loss:.0f} 元。",
+            f"建议止损线：-{stop_loss_pct * 100:.0f}%；建议止盈线：+{take_profit_pct * 100:.0f}%。",
+            f"连续亏损 {max_consecutive_losses} 次后停止新开仓。",
         ]
         if not trade_enabled:
             execution_lines.append(
-                "当前交易开关关闭，本轮不得执行买卖或撤单，只能输出 `NO_ACTION`。"
+                "当前交易开关关闭，本轮不得提交买卖或撤单提案，只能输出 `NO_ACTION`。"
             )
         if analyst_prompt:
             execution_lines.append(f"补充分析要求：{analyst_prompt}")
@@ -1223,11 +1248,17 @@ class AniuService:
                 message="正在执行策略裁决",
                 proposal_count=len(proposals),
             )
+            risk_account_snapshot = self._ensure_risk_account_snapshot(
+                settings_snapshot,
+                tool_calls,
+            )
             policy_decisions = self._evaluate_trade_proposals(
                 proposals,
                 run_type=str(getattr(settings, "run_type", "analysis") or "analysis"),
                 trade_enabled=bool(getattr(settings, "trade_enabled", True)),
                 trigger_source=trigger_source,
+                settings=settings_snapshot,
+                account_snapshot=risk_account_snapshot,
             )
             approved_count = sum(
                 1 for item in policy_decisions if item.decision == "approved"
@@ -1270,6 +1301,7 @@ class AniuService:
                     rejected_count=rejected_count,
                 )
             executed_intents = intents_from_proposals(policy_decisions)
+            self._execute_trade_intents(settings_snapshot, executed_intents)
             executed_actions = intents_to_records(executed_intents)
             persisted_trade_orders = [
                 {
@@ -1578,11 +1610,110 @@ class AniuService:
             )
             if action_name == "CANCEL":
                 entry.price_type = "CANCEL"
+                entry.symbol = (
+                    str(executed_action.get("stock_code") or "").strip()
+                    or str(executed_action.get("order_id") or "").strip()
+                    or "ALL"
+                )
+                entry.response = executed_action
             if action_name == "MANAGE_SELF_SELECT":
                 entry.price_type = "SELF_SELECT"
                 entry.symbol = str(executed_action.get("query") or "")
             proposals.append(entry)
         return proposals
+
+    def _build_risk_account_snapshot(
+        self, tool_calls: list[dict[str, Any]] | None
+    ) -> dict[str, Any] | None:
+        if not isinstance(tool_calls, list):
+            return None
+        balance_result = self._extract_tool_result(tool_calls, "mx_get_balance")
+        positions_result = self._extract_tool_result(tool_calls, "mx_get_positions")
+        orders_result = self._extract_tool_result(tool_calls, "mx_get_orders")
+        if balance_result is None and positions_result is None:
+            return None
+        try:
+            overview = self._build_account_overview(balance_result, positions_result)
+        except Exception:
+            logger.debug("risk account snapshot build failed", exc_info=True)
+            return None
+        positions = overview.get("positions") or []
+        if not isinstance(positions, list):
+            positions = []
+        current_prices: dict[str, float] = {}
+        for position in positions:
+            if not isinstance(position, dict):
+                continue
+            symbol = str(position.get("symbol") or "").strip().upper().split(".")[0]
+            current_price = position.get("current_price")
+            if symbol and current_price is not None:
+                try:
+                    current_prices[symbol] = float(current_price)
+                except (TypeError, ValueError):
+                    pass
+        recent_losses = 0
+        if orders_result is not None:
+            try:
+                normalized_orders = self._build_orders_overview(orders_result)
+                trade_summaries = self._build_trade_summaries(
+                    normalized_orders,
+                    positions,
+                )
+                for summary in trade_summaries:
+                    if float(summary.get("profit") or 0.0) < 0:
+                        recent_losses += 1
+                    else:
+                        break
+            except Exception:
+                logger.debug("risk recent losses build failed", exc_info=True)
+        return {
+            "cash_balance": overview.get("cash_balance"),
+            "total_assets": overview.get("total_assets"),
+            "daily_profit": overview.get("daily_profit"),
+            "total_return_ratio": overview.get("total_return_ratio"),
+            "total_position_amount": sum(
+                float(position.get("amount") or 0.0)
+                for position in positions
+                if isinstance(position, dict)
+            ),
+            "positions": positions,
+            "current_prices": current_prices,
+            "recent_losses": recent_losses,
+        }
+
+    def _ensure_risk_account_snapshot(
+        self,
+        settings_snapshot: dict[str, Any],
+        tool_calls: list[dict[str, Any]] | None,
+    ) -> dict[str, Any] | None:
+        snapshot = self._build_risk_account_snapshot(tool_calls)
+        if snapshot is not None:
+            return snapshot
+
+        api_key = str(settings_snapshot.get("mx_api_key") or "").strip()
+        if not api_key:
+            return None
+        try:
+            client = MXClient(
+                api_key=api_key,
+                base_url=settings_snapshot.get("mx_api_url"),
+            )
+            try:
+                payloads = self._fetch_live_account_payloads(client)
+                if not payloads["balance"].get("ok") and not payloads["positions"].get("ok"):
+                    return None
+                return self._build_risk_account_snapshot(
+                    [
+                        {"name": "mx_get_balance", "result": payloads["balance"]},
+                        {"name": "mx_get_positions", "result": payloads["positions"]},
+                        {"name": "mx_get_orders", "result": payloads["orders"]},
+                    ]
+                )
+            finally:
+                client.close()
+        except Exception:
+            logger.debug("live risk account snapshot failed", exc_info=True)
+            return None
 
     def _evaluate_trade_proposals(
         self,
@@ -1591,19 +1722,52 @@ class AniuService:
         run_type: str,
         trade_enabled: bool,
         trigger_source: str,
+        settings: dict[str, Any] | None = None,
+        account_snapshot: dict[str, Any] | None = None,
     ) -> list[PolicyDecision]:
         enforce_trade_run_type = not (
             trigger_source == "manual" and run_type == "analysis"
         )
-        return [
-            risk_gate.evaluate(
-                proposal=proposal,
-                run_type=run_type,
-                trade_enabled=trade_enabled,
-                enforce_trade_run_type=enforce_trade_run_type,
+        max_actions = max(
+            1,
+            int((settings or {}).get("max_actions", 2) or 2),
+        )
+        action_count = 0
+        decisions: list[PolicyDecision] = []
+        for proposal in proposals:
+            if proposal.action in {"BUY", "SELL"}:
+                action_count += 1
+                if action_count > max_actions:
+                    decisions.append(
+                        PolicyDecision(
+                            decision="rejected",
+                            proposal=proposal,
+                            message=f"max actions exceeded ({max_actions})",
+                            retryable=False,
+                        )
+                    )
+                    continue
+            if account_snapshot is None and proposal.action in {"BUY", "SELL"}:
+                decisions.append(
+                    PolicyDecision(
+                        decision="rejected",
+                        proposal=proposal,
+                        message="account snapshot unavailable, trade blocked",
+                        retryable=False,
+                    )
+                )
+                continue
+            decisions.append(
+                risk_gate.evaluate(
+                    proposal=proposal,
+                    run_type=run_type,
+                    trade_enabled=trade_enabled,
+                    enforce_trade_run_type=enforce_trade_run_type,
+                    settings=settings,
+                    account_snapshot=account_snapshot,
+                )
             )
-            for proposal in proposals
-        ]
+        return decisions
 
     def _extract_executed_actions(self, tool_calls: Any) -> list[TradeExecutionIntent]:
         return intents_from_proposals(
@@ -1612,8 +1776,70 @@ class AniuService:
                 run_type="trade",
                 trade_enabled=True,
                 trigger_source="manual",
+                settings=None,
+                account_snapshot=None,
             )
         )
+
+    def _execute_trade_intents(
+        self,
+        settings_snapshot: dict[str, Any],
+        intents: list[TradeExecutionIntent],
+    ) -> None:
+        if not intents:
+            return
+        api_key = str(settings_snapshot.get("mx_api_key") or "").strip()
+        if not api_key:
+            for intent in intents:
+                intent.status = "failed"
+                intent.response = {"error": "未配置妙想 API Key，无法执行交易。", "preview_only": True}
+            return
+        try:
+            client = MXClient(
+                api_key=api_key,
+                base_url=settings_snapshot.get("mx_api_url"),
+            )
+        except Exception as exc:
+            for intent in intents:
+                intent.status = "failed"
+                intent.response = {"error": str(exc)}
+            return
+        try:
+            for intent in intents:
+                action = str(intent.action or "").upper()
+                try:
+                    if action == "CANCEL":
+                        cancel_type = str(intent.response.get("cancel_type") or "all") if isinstance(intent.response, dict) else "all"
+                        order_id = str(intent.response.get("order_id") or "") if isinstance(intent.response, dict) else ""
+                        raw_stock_code = str(intent.response.get("stock_code") or "") if isinstance(intent.response, dict) else ""
+                        stock_code = None
+                        if raw_stock_code and raw_stock_code not in {"ALL", "--"}:
+                            try:
+                                stock_code = _normalize_trade_symbol(raw_stock_code)[0]
+                            except RuntimeError:
+                                stock_code = raw_stock_code
+                        result = client.cancel_order(
+                            cancel_type=cancel_type,
+                            order_id=order_id or None,
+                            stock_code=stock_code,
+                        )
+                    else:
+                        raw_symbol = str(intent.symbol or "")
+                        symbol = _normalize_trade_symbol(raw_symbol)[0]
+                        result = client.trade(
+                            action=action,
+                            symbol=symbol,
+                            quantity=int(intent.quantity or 0),
+                            price_type=str(intent.price_type or "MARKET"),
+                            price=intent.price,
+                        )
+                    intent.status = "submitted"
+                    intent.response = result
+                except Exception as exc:
+                    intent.status = "failed"
+                    intent.response = {"error": str(exc)}
+        finally:
+            client.close()
 
     def _build_tg_account_summary(
         self, tool_calls: Any

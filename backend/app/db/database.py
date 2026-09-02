@@ -117,6 +117,58 @@ def _ensure_app_settings_columns(engine) -> None:
         statements.append(
             "ALTER TABLE app_settings ADD COLUMN app_external_base_url VARCHAR(255)"
         )
+    if "trade_enabled" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN trade_enabled BOOLEAN DEFAULT 1"
+        )
+    if "max_actions" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN max_actions INTEGER DEFAULT 2"
+        )
+    if "effective_capital" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN effective_capital FLOAT DEFAULT 30000.0"
+        )
+    if "max_position_pct" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN max_position_pct FLOAT DEFAULT 0.3"
+        )
+    if "max_total_position_pct" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN max_total_position_pct FLOAT DEFAULT 0.8"
+        )
+    if "max_order_amount" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN max_order_amount FLOAT DEFAULT 30000.0"
+        )
+    if "max_daily_loss" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN max_daily_loss FLOAT DEFAULT 3000.0"
+        )
+    if "max_drawdown_pct" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN max_drawdown_pct FLOAT DEFAULT 0.15"
+        )
+    if "stop_loss_pct" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN stop_loss_pct FLOAT DEFAULT 0.05"
+        )
+    if "take_profit_pct" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN take_profit_pct FLOAT DEFAULT 0.10"
+        )
+    if "max_consecutive_losses" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN max_consecutive_losses INTEGER DEFAULT 3"
+        )
+    if "min_market_trend_score" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN min_market_trend_score FLOAT DEFAULT 0.0"
+        )
+    if "allow_short" not in columns:
+        statements.append(
+            "ALTER TABLE app_settings ADD COLUMN allow_short BOOLEAN DEFAULT 0"
+        )
 
     if not statements:
         return
@@ -134,7 +186,20 @@ def _ensure_app_settings_columns(engine) -> None:
                 "automation_idle_summary_hours = COALESCE(automation_idle_summary_hours, 12), "
                 "automation_context_source = COALESCE(NULLIF(trim(automation_context_source), ''), 'default'), "
                 "tg_notify_trade_enabled = COALESCE(tg_notify_trade_enabled, 0), "
-                "tg_notify_failure_enabled = COALESCE(tg_notify_failure_enabled, 0)"
+                "tg_notify_failure_enabled = COALESCE(tg_notify_failure_enabled, 0), "
+                "trade_enabled = COALESCE(trade_enabled, 1), "
+                "max_actions = COALESCE(max_actions, 2), "
+                "effective_capital = COALESCE(effective_capital, 30000.0), "
+                "max_position_pct = COALESCE(max_position_pct, 0.3), "
+                "max_total_position_pct = COALESCE(max_total_position_pct, 0.8), "
+                "max_order_amount = COALESCE(max_order_amount, 30000.0), "
+                "max_daily_loss = COALESCE(max_daily_loss, 3000.0), "
+                "max_drawdown_pct = COALESCE(max_drawdown_pct, 0.15), "
+                "stop_loss_pct = COALESCE(stop_loss_pct, 0.05), "
+                "take_profit_pct = COALESCE(take_profit_pct, 0.10), "
+                "max_consecutive_losses = COALESCE(max_consecutive_losses, 3), "
+                "min_market_trend_score = COALESCE(min_market_trend_score, 0.0), "
+                "allow_short = COALESCE(allow_short, 0)"
             )
         )
 

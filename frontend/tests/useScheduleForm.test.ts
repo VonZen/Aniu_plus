@@ -3,16 +3,18 @@ import test from 'node:test'
 
 import { useScheduleForm } from '../src/composables/useScheduleForm.ts'
 
-test('default trade frequency is every 15 minutes with 16 daily runs', () => {
+test('default trade frequency is every 30 minutes with 8 daily runs and disabled by default', () => {
   const { buildPayload, getDailyEstimatedRuns } = useScheduleForm()
 
   const payload = buildPayload([])
   const morningRun = payload.find((item) => item.name === '上午运行')
   const afternoonRun = payload.find((item) => item.name === '下午运行')
 
-  assert.equal(morningRun?.cron_expression, 'trade-window:09:30-11:30/15m')
-  assert.equal(afternoonRun?.cron_expression, 'trade-window:13:00-15:00/15m')
-  assert.equal(getDailyEstimatedRuns(), 16)
+  assert.equal(morningRun?.cron_expression, 'trade-window:09:30-11:30/30m')
+  assert.equal(afternoonRun?.cron_expression, 'trade-window:13:00-15:00/30m')
+  assert.equal(morningRun?.enabled, false)
+  assert.equal(afternoonRun?.enabled, false)
+  assert.equal(getDailyEstimatedRuns(), 8)
 })
 
 test('getMorningRunSummary supports second-level frequencies', () => {
